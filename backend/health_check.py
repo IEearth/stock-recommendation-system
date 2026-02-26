@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 import sys
 import os
+from sqlalchemy import text
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -28,7 +29,8 @@ class HealthChecker:
         """连接数据库"""
         try:
             self.db = SessionLocal()
-            self.db.execute("SELECT 1")  # 测试连接
+            from sqlalchemy import text
+            self.db.execute(text("SELECT 1"))  # 测试连接
             return True
         except Exception as e:
             logger.error(f"数据库连接失败: {e}")
