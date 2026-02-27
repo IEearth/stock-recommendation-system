@@ -241,6 +241,26 @@ async def root(request: Request):
             border-bottom: none;
         }}
         
+        /* 模态框样式 */
+        #modal-overlay label {{
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 500;
+        }}
+        
+        #modal-overlay label + div {{
+            color: #e5e7eb;
+            font-size: 14px;
+        }}
+        
+        #modal-overlay pre {{
+            margin: 0;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+        }}
+
         table {{
             width: 100%;
             border-collapse: collapse;
@@ -488,6 +508,12 @@ async def root(request: Request):
                 <p>请稍候，正在加载数据...</p>
             </div>
         </div>
+        
+        <!-- 模态框 -->
+        <div id="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); justify-content: center; align-items: center; z-index: 1000;">
+            <div id="modal-content" style="background: #1f2937; padding: 24px; border-radius: 12px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);">
+            </div>
+        </div>
     </div>
     <script>
         const API_BASE = 'http://{host}/api';
@@ -697,7 +723,7 @@ async def root(request: Request):
                         <thead>
                             <tr><th>股票名称</th><th>行业</th><th>市场</th><th>操作</th></tr>
                         </thead>
-                        <tbody>${{html || '<tr><td colspan="4">暂无股票数据</td></tr>'}}</tbody>
+                        <tbody>${{html || '<tr><td colspan="5">暂无股票数据</td></tr>'}}</tbody>
                     </table>
                     ${{paginationHtml}}
                 </div>`;
@@ -780,12 +806,16 @@ async def root(request: Request):
             const response = await fetch(`${{API_BASE}}/tasks/recent?page=${{tasksPage}}&page_size=${{tasksPageSize}}`);
             const data = await response.json();
 
-            const html = data.logs.map(log => `
+            // 存储当前页的日志数据
+            window.currentTaskLogs = data.logs;
+
+            const html = data.logs.map((log, index) => `
                 <tr>
                     <td>${{new Date(log.start_time).toLocaleString('zh-CN')}}</td>
                     <td><strong>${{log.task_name}}</strong></td>
                     <td><span class="status-badge ${{log.status === 'success' ? 'status-success' : 'status-error'}}">${{log.status}}</span></td>
-                    <td style="max-width: 300px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis;">${{log.error ? (log.error.length > 100 ? log.error.substring(0, 100) + '...' : log.error) : '-'}}</td>
+                    <td style="max-width: 200px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis;">${{log.error ? (log.error.length > 50 ? log.error.substring(0, 50) + '...' : log.error) : '-'}}</td>
+                    <td><button onclick="showTaskDetail(${{index}})" style="padding: 6px 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">查看</button></td>
                 </tr>
             `).join('');
 
@@ -827,7 +857,7 @@ async def root(request: Request):
                         <thead>
                             <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th></tr>
                         </thead>
-                        <tbody>${{html || '<tr><td colspan="4">暂无任务日志</td></tr>'}}</tbody>
+                        <tbody>${{html || '<tr><td colspan="5">暂无任务日志</td></tr>'}}</tbody>
                     </table>
                     ${{paginationHtml}}
                 </div>`;
@@ -836,6 +866,59 @@ async def root(request: Request):
         function changeTasksPage(page) {{
             tasksPage = page;
             loadTasks();
+        }}
+        
+        function showTaskDetail(index) {{
+            const log = window.currentTaskLogs[index];
+            
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-content').innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                    <h3 style="margin: 0; font-size: 18px;">任务详情</h3>
+                    <button onclick="closeModal()" style="background: none; border: none; color: #e5e7eb; font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+                
+                <div style="display: grid; gap: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">任务名称</label>
+                        <div style="font-size: 14px; font-weight: 500;">${{log.task_name}}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">任务类型</label>
+                        <div style="font-size: 14px;">${{log.task_type}}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">执行时间</label>
+                        <div style="font-size: 14px;">${{new Date(log.start_time).toLocaleString('zh-CN')}}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">状态</label>
+                        <span class="status-badge ${{log.status === 'success' ? 'status-success' : 'status-error'}}">${{log.status}}</span>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">执行时长</label>
+                        <div style="font-size: 14px;">${{log.duration_seconds ? log.duration_seconds.toFixed(2) + ' 秒' : '-'}}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">执行消息</label>
+                        <div style="font-size: 14px; word-wrap: break-word;">${{log.message || '-'}}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #9ca3af;">错误信息</label>
+                        <div style="font-size: 14px; word-wrap: break-word; white-space: pre-wrap; background: rgba(220, 38, 38, 0.1); padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto;">${{log.error || '-'}}</div>
+                    </div>
+                </div>
+            `;
+        }}
+        
+        function closeModal() {{
+            document.getElementById('modal-overlay').style.display = 'none';
         }}
         
         async function loadSettings() {{
