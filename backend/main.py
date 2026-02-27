@@ -500,6 +500,9 @@ async def root(request: Request):
         let tasksPage = 1;
         let tasksPageSize = 10;
 
+        // 推荐日期（默认今天）
+        let recommendationDate = new Date().toISOString().split('T')[0];
+
         async function showPage(page, target) {{
             document.querySelectorAll('.menu-item').forEach(item => {{
                 item.classList.remove('active');
@@ -569,7 +572,7 @@ async def root(request: Request):
         }}
         
         async function loadRecommendations() {{
-            const response = await fetch(`${{API_BASE}}/recommendations/today?page=${{recommendationsPage}}&page_size=${{recommendationsPageSize}}`);
+            const response = await fetch(`${{API_BASE}}/recommendations/today?date=${{recommendationDate}}&page=${{recommendationsPage}}&page_size=${{recommendationsPageSize}}`);
             const data = await response.json();
             
             const html = data.recommendations.map((rec, i) => `
@@ -578,6 +581,7 @@ async def root(request: Request):
                     <td><strong>${{rec.name}}</strong> (${{rec.ts_code}})</td>
                     <td style="color: ${{rec.predicted_return > 0 ? '#28a745' : '#dc3545'}}">${{rec.predicted_return.toFixed(2)}}%</td>
                     <td>¥${{rec.current_price?.toFixed(2) || 'N/A'}}</td>
+                    <td>${{new Date(rec.created_at || recommendationDate).toLocaleString('zh-CN').split(' ')[0]}}</td>
                     <td>${{rec.reasons?.join('<br>') || '无'}}</td>
                 </tr>
             `).join('');
@@ -610,15 +614,32 @@ async def root(request: Request):
             
             document.getElementById('main-content').innerHTML = `
                 <div class="card">
-                    <h3>💡 今日推荐 (${{data.date}})</h3>
+                    <h3>💡 推荐列表</h3>
+                    <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center;">
+                        <label style="font-size: 13px; color: #e5e7eb;">选择日期：</label>
+                        <input type="date" id="recommendation-date-input" value="${{recommendationDate}}" 
+                            onchange="updateRecommendationDate(this.value)"
+                            style="padding: 8px 12px; background: rgba(17, 24, 39, 0.5); border: 1px solid rgba(102, 126, 234, 0.5); color: #e5e7eb; border-radius: 6px; font-size: 14px;">
+                        <button onclick="reloadRecommendations()" 
+                            style="padding: 8px 16px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">查询</button>
+                    </div>
                     <table class="data-table">
                         <thead>
-                            <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐理由</th></tr>
+                            <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐日期</th><th>推荐理由</th></tr>
                         </thead>
-                        <tbody>${{html || '<tr><td colspan="5">暂无推荐数据</td></tr>'}}</tbody>
+                        <tbody>${{html || '<tr><td colspan="6">暂无推荐数据</td></tr>'}}</tbody>
                     </table>
                     ${{paginationHtml}}
                 </div>`;
+        }}
+        
+        function updateRecommendationDate(date) {{
+            recommendationDate = date;
+        }}
+        
+        function reloadRecommendations() {{
+            recommendationsPage = 1;
+            loadRecommendations();
         }}
         
         function changeRecommendationsPage(page) {{
@@ -764,7 +785,7 @@ async def root(request: Request):
                     <td>${{new Date(log.start_time).toLocaleString('zh-CN')}}</td>
                     <td><strong>${{log.task_name}}</strong></td>
                     <td><span class="status-badge ${{log.status === 'success' ? 'status-success' : 'status-error'}}">${{log.status}}</span></td>
-                    <td>${{log.error || '-'}}</td>
+                    <td style="max-width: 300px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis;">${{log.error ? (log.error.length > 100 ? log.error.substring(0, 100) + '...' : log.error) : '-'}}</td>
                 </tr>
             `).join('');
 
@@ -892,8 +913,6 @@ async def root(request: Request):
         
         // 初始加载
         loadDashboard();
-        
-        // 自动刷新
         setInterval(loadDashboard, 30000);
     </script>
 </body>
@@ -912,10 +931,30 @@ async def health_check():
 
 # API endpoints
 @app.get("/api/recommendations/today")
-async def get_today_recommendations(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
-    """获取今日推荐（支持分页）"""
+async def get_today_recommendations(date: str = None, page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
+    """获取推荐（支持日期查询和分页）"""
     try:
-        today = recommender.get_today_recommendations(db)
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+        
+        # 获取指定日期的推荐
+        recs = db.query(Recommendation).filter(
+            Recommendation.recommend_date == date
+        ).order_by(Recommendation.rank).all()
+        
+        # 转换为字典
+        today = []
+        for rec in recs:
+            today.append({
+                "rank": rec.rank,
+                "ts_code": rec.ts_code,
+                "name": rec.name,
+                "predicted_return": rec.predicted_return,
+                "current_price": rec.current_price,
+                "target_price": rec.current_price * (1 + rec.predicted_return / 100) if rec.current_price else None,
+                "reasons": rec.reasons.split('\\n') if rec.reasons else [],
+                "created_at": rec.created_at.isoformat() if rec.created_at else None
+            })
 
         # 计算分页
         total = len(today)
@@ -924,7 +963,7 @@ async def get_today_recommendations(page: int = 1, page_size: int = 10, db: Sess
         paginated = today[offset:offset + page_size]
 
         return {
-            "date": datetime.now().strftime('%Y-%m-%d'),
+            "date": date,
             "total": total,
             "page": page,
             "page_size": page_size,
