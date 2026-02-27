@@ -491,11 +491,15 @@ async def root(request: Request):
     </div>
     <script>
         const API_BASE = 'http://{host}/api';
-        
+
         // 分页状态
         let stocksPage = 1;
         let stocksPageSize = 10;
-        
+        let recommendationsPage = 1;
+        let recommendationsPageSize = 10;
+        let tasksPage = 1;
+        let tasksPageSize = 10;
+
         async function showPage(page, target) {{
             document.querySelectorAll('.menu-item').forEach(item => {{
                 item.classList.remove('active');
@@ -521,7 +525,7 @@ async def root(request: Request):
             const response2 = await fetch(`${{API_BASE}}/recommendations/today`);
             const data2 = await response2.json();
             
-            const response3 = await fetch(`${{API_BASE}}/tasks/recent?limit=10`);
+            const response3 = await fetch(`${{API_BASE}}/tasks/recent?page=1&page_size=10`);
             const data3 = await response3.json();
             
             const taskLogs = data3.logs || [];
@@ -565,12 +569,12 @@ async def root(request: Request):
         }}
         
         async function loadRecommendations() {{
-            const response = await fetch(`${{API_BASE}}/recommendations/today`);
+            const response = await fetch(`${{API_BASE}}/recommendations/today?page=${{recommendationsPage}}&page_size=${{recommendationsPageSize}}`);
             const data = await response.json();
             
             const html = data.recommendations.map((rec, i) => `
                 <tr>
-                    <td>${{i + 1}}</td>
+                    <td>${{(data.page - 1) * data.page_size + i + 1}}</td>
                     <td><strong>${{rec.name}}</strong> (${{rec.ts_code}})</td>
                     <td style="color: ${{rec.predicted_return > 0 ? '#28a745' : '#dc3545'}}">${{rec.predicted_return.toFixed(2)}}%</td>
                     <td>¥${{rec.current_price?.toFixed(2) || 'N/A'}}</td>
@@ -578,16 +582,48 @@ async def root(request: Request):
                 </tr>
             `).join('');
             
+            // 生成分页HTML
+            let paginationHtml = '';
+            if (data.total_pages > 1) {{
+                const pageButtons = [];
+                pageButtons.push(`<button ${{data.page <= 1 ? 'disabled' : ''}} onclick="changeRecommendationsPage(${{data.page - 1}})">上一页</button>`);
+                
+                let startPage = Math.max(1, data.page - 2);
+                let endPage = Math.min(data.total_pages, startPage + 4);
+                if (endPage - startPage < 4) {{
+                    startPage = Math.max(1, endPage - 4);
+                }}
+                
+                for (let i = startPage; i <= endPage; i++) {{
+                    pageButtons.push(`<button class="${{i === data.page ? 'active' : ''}}" onclick="changeRecommendationsPage(${{i}})">${{i}}</button>`);
+                }}
+                
+                pageButtons.push(`<button ${{data.page >= data.total_pages ? 'disabled' : ''}} onclick="changeRecommendationsPage(${{data.page + 1}})">下一页</button>`);
+                
+                paginationHtml = `
+                    <div class="pagination">
+                        ${{pageButtons.join('')}}
+                        <span class="page-info">${{data.page}} / ${{data.total_pages}} 页，共 ${{data.total}} 条</span>
+                    </div>
+                `;
+            }}
+            
             document.getElementById('main-content').innerHTML = `
-            <div class="card">
-                <h3>💡 今日推荐 (${{data.date}})</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐理由</th></tr>
-                    </thead>
-                    <tbody>${{html || '<tr><td colspan="5">暂无推荐数据</td></tr>'}}</tbody>
-                </table>
-            </div>`;
+                <div class="card">
+                    <h3>💡 今日推荐 (${{data.date}})</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐理由</th></tr>
+                        </thead>
+                        <tbody>${{html || '<tr><td colspan="5">暂无推荐数据</td></tr>'}}</tbody>
+                    </table>
+                    ${{paginationHtml}}
+                </div>`;
+        }}
+        
+        function changeRecommendationsPage(page) {{
+            recommendationsPage = page;
+            loadRecommendations();
         }}
         
         async function loadStocks() {{
@@ -720,49 +756,139 @@ async def root(request: Request):
         }}
         
         async function loadTasks() {{
-            const response = await fetch(`${{API_BASE}}/tasks/recent?limit=50`);
+            const response = await fetch(`${{API_BASE}}/tasks/recent?page=${{tasksPage}}&page_size=${{tasksPageSize}}`);
             const data = await response.json();
-            
+
             const html = data.logs.map(log => `
                 <tr>
                     <td>${{new Date(log.start_time).toLocaleString('zh-CN')}}</td>
                     <td><strong>${{log.task_name}}</strong></td>
                     <td><span class="status-badge ${{log.status === 'success' ? 'status-success' : 'status-error'}}">${{log.status}}</span></td>
-                    <td>${{log.error_message || '-'}}</td>
+                    <td>${{log.error || '-'}}</td>
                 </tr>
             `).join('');
-            
+
+            // 生成分页HTML
+            let paginationHtml = '';
+            if (data.total_pages > 1) {{
+                const pageButtons = [];
+                pageButtons.push(`<button ${{data.page <= 1 ? 'disabled' : ''}} onclick="changeTasksPage(${{data.page - 1}})">上一页</button>`);
+
+                let startPage = Math.max(1, data.page - 2);
+                let endPage = Math.min(data.total_pages, startPage + 4);
+                if (endPage - startPage < 4) {{
+                    startPage = Math.max(1, endPage - 4);
+                }}
+
+                for (let i = startPage; i <= endPage; i++) {{
+                    pageButtons.push(`<button class="${{i === data.page ? 'active' : ''}}" onclick="changeTasksPage(${{i}})">${{i}}</button>`);
+                }}
+
+                pageButtons.push(`<button ${{data.page >= data.total_pages ? 'disabled' : ''}} onclick="changeTasksPage(${{data.page + 1}})">下一页</button>`);
+
+                paginationHtml = `
+                    <div class="pagination">
+                        ${{pageButtons.join('')}}
+                        <span class="page-info">${{data.page}} / ${{data.total_pages}} 页，共 ${{data.total}} 条</span>
+                    </div>
+                `;
+            }}
+
             document.getElementById('main-content').innerHTML = `
-            <div class="card">
-                <h3>⏰ 任务日志</h3>
-                <div style="margin-bottom: 15px;">
-                    <span>总任务数: ${{data.total || 0}}</span> |
-                    <span style="color: #28a745;">成功: ${{data.success || 0}}</span> |
-                    <span style="color: #dc3545;">失败: ${{data.failed || 0}}</span>
-                </div>
-                <table class="data-table">
-                    <thead>
-                        <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th></tr>
-                    </thead>
-                    <tbody>${{html || '<tr><td colspan="4">暂无任务日志</td></tr>'}}</tbody>
-                </table>
-            </div>`;
+                <div class="card">
+                    <h3>⏰ 任务日志</h3>
+                    <div style="margin-bottom: 15px;">
+                        <span>总任务数: ${{data.total || 0}}</span> |
+                        <span style="color: #28a745;">成功: ${{data.success || 0}}</span> |
+                        <span style="color: #dc3545;">失败: ${{data.failed || 0}}</span>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th></tr>
+                        </thead>
+                        <tbody>${{html || '<tr><td colspan="4">暂无任务日志</td></tr>'}}</tbody>
+                    </table>
+                    ${{paginationHtml}}
+                </div>`;
+        }}
+
+        function changeTasksPage(page) {{
+            tasksPage = page;
+            loadTasks();
         }}
         
         async function loadSettings() {{
             document.getElementById('main-content').innerHTML = `
             <div class="card">
                 <h3>⚙️ 系统设置</h3>
-                <h4>数据源配置</h4>
-                <p>当前使用 Tushare 接口获取股票数据</p>
-                <h4>数据库</h4>
-                <p>MySQL 本地数据库</p>
-                <h4>任务调度</h4>
-                <p>Celery Beat 定时任务 (每日早上9:00生成推荐)</p>
-                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
-                    <strong>提示:</strong> 更多配置请修改 .env 文件或联系管理员
+                
+                <div style="margin-bottom: 30px;">
+                    <h4>💡 自定义价格范围生成推荐</h4>
+                    <p style="color: #9ca3af; margin-bottom: 15px;">根据你设定的股价范围生成新的推荐</p>
+                    <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #e5e7eb;">最低价格 (元)</label>
+                            <input type="number" id="min-price" value="0" min="0" step="0.01"
+                                style="padding: 10px; width: 150px; background: rgba(17, 24, 39, 0.5); border: 1px solid rgba(102, 126, 234, 0.5); color: #e5e7eb; border-radius: 6px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #e5e7eb;">最高价格 (元)</label>
+                            <input type="number" id="max-price" value="15" min="0" step="0.01"
+                                style="padding: 10px; width: 150px; background: rgba(17, 24, 39, 0.5); border: 1px solid rgba(102, 126, 234, 0.5); color: #e5e7eb; border-radius: 6px;">
+                        </div>
+                        <button onclick="generateCustomRecommendations()" 
+                            style="padding: 10px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                            生成推荐
+                        </button>
+                    </div>
+                    <div id="generate-result" style="margin-top: 10px;"></div>
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <h4>📊 数据源配置</h4>
+                    <p>当前使用 baostock 接口获取股票数据（免费、无需 Token）</p>
+                </div>
+                
+                <div style="margin-bottom: 30px;">
+                    <h4>💾 数据库</h4>
+                    <p>MySQL 本地数据库</p>
+                </div>
+                
+                <div style="margin-bottom: 30px;">
+                    <h4>⏰ 任务调度</h4>
+                    <p>定时任务更新数据并生成推荐（每日凌晨执行）</p>
                 </div>
             </div>`;
+        }}
+
+        async function generateCustomRecommendations() {{
+            const minPrice = document.getElementById('min-price').value;
+            const maxPrice = document.getElementById('max-price').value;
+            const resultDiv = document.getElementById('generate-result');
+
+            if (parseFloat(minPrice) >= parseFloat(maxPrice)) {{
+                resultDiv.innerHTML = '<span style="color: #ef4444;">❌ 最低价格必须小于最高价格</span>';
+                return;
+            }}
+
+            resultDiv.innerHTML = '<span style="color: #667eea;">⏳ 生成中...</span>';
+
+            try {{
+                const response = await fetch(`${{API_BASE}}/recommendations/generate?min_price=${{minPrice}}&max_price=${{maxPrice}}`, {{
+                    method: 'POST'
+                }});
+                const data = await response.json();
+
+                if (data.status === 'success') {{
+                    resultDiv.innerHTML = `<span style="color: #10b981;">✅ ${data.message}（价格范围：¥${{minPrice}}-${{maxPrice}}）</span>`;
+                    // 2秒后跳转到推荐页面
+                    setTimeout(() => showPage('recommendations', document.querySelector('.menu-item:nth-child(3)')), 2000);
+                }} else {{
+                    resultDiv.innerHTML = `<span style="color: #ef4444;">❌ 生成失败: ${data.message}</span>`;
+                }}
+            }} catch (error) {{
+                resultDiv.innerHTML = `<span style="color: #ef4444;">❌ 请求失败: ${error.message}</span>`;
+            }}
         }}
         
         // 初始加载
@@ -787,14 +913,24 @@ async def health_check():
 
 # API endpoints
 @app.get("/api/recommendations/today")
-async def get_today_recommendations(db: Session = Depends(get_db)):
-    """获取今日推荐"""
+async def get_today_recommendations(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
+    """获取今日推荐（支持分页）"""
     try:
         today = recommender.get_today_recommendations(db)
+
+        # 计算分页
+        total = len(today)
+        total_pages = (total + page_size - 1) // page_size
+        offset = (page - 1) * page_size
+        paginated = today[offset:offset + page_size]
+
         return {
             "date": datetime.now().strftime('%Y-%m-%d'),
-            "count": len(today),
-            "recommendations": today
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "recommendations": paginated
         }
     except Exception as e:
         logger.error(f"获取推荐失败: {e}")
@@ -837,13 +973,18 @@ async def get_recommendation_history(days: int = 7, db: Session = Depends(get_db
 
 
 @app.post("/api/recommendations/generate")
-async def generate_recommendations():
-    """生成新的推荐"""
+async def generate_recommendations(min_price: float = 0, max_price: float = 15):
+    """生成新的推荐（可设置价格范围）"""
     try:
-        recs = recommender.generate_recommendations(top_n=10)
+        recs = recommender.generate_recommendations(
+            top_n=10,
+            min_price=min_price,
+            max_price=max_price
+        )
         return {
             "status": "success",
             "count": len(recs),
+            "price_range": f"¥{min_price}-{max_price}",
             "message": f"成功生成 {len(recs)} 个推荐"
         }
     except Exception as e:
@@ -973,18 +1114,25 @@ async def get_stock_detail(ts_code: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/tasks/recent")
-async def get_recent_tasks(limit: int = 10, db: Session = Depends(get_db)):
-    """获取最近任务日志"""
+async def get_recent_tasks(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
+    """获取最近任务日志（支持分页）"""
     try:
+        # 获取总数
+        total = db.query(func.count(TaskLog.id)).scalar()
+
+        # 计算分页
+        total_pages = (total + page_size - 1) // page_size
+        offset = (page - 1) * page_size
+
+        # 获取分页数据
         tasks = db.query(TaskLog).order_by(
             TaskLog.start_time.desc()
-        ).limit(limit).all()
-        
+        ).offset(offset).limit(page_size).all()
+
         # 统计
-        total = db.query(func.count(TaskLog.id)).scalar()
         success = db.query(func.count(TaskLog.id)).filter(TaskLog.status == 'success').scalar()
         failed = db.query(func.count(TaskLog.id)).filter(TaskLog.status == 'failed').scalar()
-        
+
         result = []
         for task in tasks:
             result.append({
@@ -996,11 +1144,14 @@ async def get_recent_tasks(limit: int = 10, db: Session = Depends(get_db)):
                 "message": task.message,
                 "error": task.error
             })
-        
+
         return {
             "total": total,
             "success": success,
             "failed": failed,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
             "logs": result
         }
     except Exception as e:

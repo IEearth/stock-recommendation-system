@@ -23,11 +23,13 @@ class StockRecommender:
         """初始化"""
         self.predictor = StockPredictor()
 
-    def generate_recommendations(self, top_n=10, db_session=None):
+    def generate_recommendations(self, top_n=10, min_price=0, max_price=15, db_session=None):
         """生成推荐
 
         Args:
             top_n: 推荐数量
+            min_price: 最低股价
+            max_price: 最高股价
             db_session: 数据库会话
 
         Returns:
@@ -39,7 +41,7 @@ class StockRecommender:
             else:
                 db = db_session
 
-            logger.info("开始生成股票推荐...")
+            logger.info(f"开始生成股票推荐... 价格范围: ¥{min_price}-{max_price}")
 
             # 获取所有股票
             stocks = db.query(Stock).limit(100).all()
@@ -50,8 +52,8 @@ class StockRecommender:
                 # 预测
                 pred = self.predictor.predict(stock.ts_code, db)
 
-                # 只推荐预测收益为正且价格在15元以下的股票
-                if pred and pred['predicted_return'] > 0 and pred['current_price'] < 15:
+                # 只推荐预测收益为正且价格在指定范围内的股票
+                if pred and pred['predicted_return'] > 0 and min_price <= pred['current_price'] <= max_price:
                     pred['name'] = stock.name
                     predictions.append(pred)
 
