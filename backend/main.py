@@ -855,7 +855,7 @@ async def root(request: Request):
                     </div>
                     <table class="data-table">
                         <thead>
-                            <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th></tr>
+                            <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th><th>操作</th></tr>
                         </thead>
                         <tbody>${{html || '<tr><td colspan="5">暂无任务日志</td></tr>'}}</tbody>
                     </table>
