@@ -1,0 +1,16 @@
+project: my-project
+updated: 2026-02-26T12:00:00Z
+
+tasks:
+  - id: auth-refactor
+    status: in_progress
+    owner: you
+    notes: "重构登录鉴权模块"
+
+  - id: docs-update
+    status: todo
+    owner: you
+    notes: "重构后更新接口文档"
+
+next_actions:
+  - "完成 auth-refactor 后再更新 docs-update"

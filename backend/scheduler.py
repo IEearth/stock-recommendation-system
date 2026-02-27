@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal, SystemHealth, Recommendation, TaskLog, Stock, StockNews
-from models.market_collector import MarketCollector
+from models.market_collector_baostock import MarketCollector
 from models.news_collector import NewsCollector
 from models.recommender import StockRecommender
 
@@ -28,7 +28,7 @@ class JobScheduler:
 
     def __init__(self):
         """初始化"""
-        self.market_collector = MarketCollector()
+        self.market_collector = MarketCollector()  # baostock 版本不需要 token
         self.news_collector = NewsCollector()
         self.recommender = StockRecommender()
 
@@ -91,11 +91,11 @@ class JobScheduler:
         task_start = datetime.now()
         try:
             logger.info("🔄 开始更新行情数据...")
-            
+
             db = SessionLocal()
-            self.market_collector.update_daily_quotes(days=30, db_session=db)
+            self.market_collector.update_market_data(days=90, db_session=db)
             db.close()
-            
+
             duration = (datetime.now() - task_start).total_seconds()
             self.log_task(
                 "更新行情数据",
@@ -105,7 +105,7 @@ class JobScheduler:
                 duration=duration
             )
             logger.info("✅ 行情数据更新完成！")
-            
+
         except Exception as e:
             duration = (datetime.now() - task_start).total_seconds()
             self.log_task(

@@ -1,5 +1,5 @@
 """
-FastAPI 主应用 - 优化版（支持后台管理）
+FastAPI 主应用 - 带主题切换功能
 """
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime
+from sqlalchemy import func
 import logging
 import sys
 import os
@@ -14,20 +15,14 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database import get_db, init_db, Recommendation, StockPrediction, SystemHealth, TaskLog, Stock, StockPrice, StockNews
-from sqlalchemy import func
 
 # 日志配置
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 创建FastAPI应用
-app = FastAPI(
-    title="A股智能推荐系统 - 管理后台",
-    description="基于机器学习的A股股票智能推荐系统管理平台",
-    version="2.0.0"
-)
+app = FastAPI(title="A股智能推荐系统API")
 
-# CORS配置
+# CORS 配置
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,27 +34,27 @@ app.add_middleware(
 # 全局变量
 recommender = None
 
-
 @app.on_event("startup")
 async def startup_event():
-    """启动时初始化"""
+    """应用启动事件"""
     logger.info("初始化数据库...")
     init_db()
-    
-    # 延迟导入避免循环依赖
-    from models.recommender import StockRecommender
-    global recommender
-    recommender = StockRecommender()
-    
     logger.info("系统启动完成！")
+    
+    # 初始化推荐器
+    global recommender
+    try:
+        from models.recommender import StockRecommender
+        recommender = StockRecommender()
+    except Exception as e:
+        logger.warning(f"推荐器初始化失败: {e}")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """管理后台首页"""
     host = request.headers.get('host', 'localhost:8000')
-    return f"""
-<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -68,11 +63,81 @@ async def root(request: Request):
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         
+        /* CSS 变量定义 - 默认暗色主题 */
+        :root {{
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --sidebar-bg-start: #1f2937;
+            --sidebar-bg-end: #111827;
+            --card-bg: rgba(31, 41, 55, 0.8);
+            --card-border: rgba(255,255,255, 0.05);
+            --text-primary: #e2e8f0;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-primary: #667eea;
+            --accent-secondary: #764ba2;
+            --stat-box-bg: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+            --stat-box-border: rgba(102, 126, 234, 0.3);
+            --hover-bg: rgba(102, 126, 234, 0.08);
+            --table-bg: rgba(17, 24, 39, 0.5);
+            --table-border: rgba(255,255, 255, 0.05);
+            --sidebar-text: #f3f4f6;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --gradient-start: #1a1a2e;
+            --gradient-end: #16213e;
+        }}
+        
+        /* 亮色主题 */
+        [data-theme="light"] {{
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --sidebar-bg-start: #ffffff;
+            --sidebar-bg-end: #f1f5f9;
+            --card-bg: rgba(255,255, 255, 0.95);
+            --card-border: rgba(0, 0, 0, 0.1);
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --accent-primary: #667eea;
+            --accent-secondary: #764ba2;
+            --stat-box-bg: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            --stat-box-border: rgba(102, 126, 234, 0.2);
+            --hover-bg: rgba(102, 126, 234, 0.05);
+            --table-bg: rgba(241, 245, 249, 0.8);
+            --table-border: rgba(0, 0, 0, 0.1);
+            --sidebar-text: #1e293b;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --gradient-start: #f0f4f8;
+            --gradient-end: #e2e8f0;
+        }}
+        
+        /* 跟随系统主题 */
+        @media (prefers-color-scheme: light) {{
+            :root:not([data-theme="dark"]) {{
+                --bg-primary: #f8fafc;
+                --bg-secondary: #ffffff;
+                --sidebar-bg-start: #ffffff;
+                --sidebar-bg-end: #f1f5f9;
+                --card-bg: rgba(255,255, 255, 0.95);
+                --card-border: rgba(0, 0, 0, 0.1);
+                --text-primary: #1e293b;
+                --text-secondary: #64748b;
+                --text-muted: #94a3b8;
+                --table-bg: rgba(241, 245, 249, 0.8);
+                --table-border: rgba(0, 0, 0, 0.1);
+                --sidebar-text: #1e293b;
+                --shadow-color: rgba(0, 0, 0, 0.1);
+                --gradient-start: #f0f4f8;
+                --gradient-end: #e2e8f0;
+            }}
+        }}
+        
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #e2e8f0;
+            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            color: var(--text-primary);
             min-height: 100vh;
+            transition: background 0.3s ease, color 0.3s ease;
         }}
         
         .container {{
@@ -82,22 +147,23 @@ async def root(request: Request):
         
         .sidebar {{
             width: 260px;
-            background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
-            color: #f3f4f6;
+            background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+            color: var(--sidebar-text);
             padding: 24px 0;
-            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+            box-shadow: 4px 0 24px var(--shadow-color);
             position: sticky;
             top: 0;
             height: 100vh;
             overflow-y: auto;
+            transition: background 0.3s ease;
         }}
         
         .sidebar h2 {{
             padding: 0 24px 24px;
             font-size: 18px;
             font-weight: 700;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-bottom: 1px solid var(--card-border);
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 16px;
@@ -109,19 +175,19 @@ async def root(request: Request):
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-left: 3px solid transparent;
             font-size: 14px;
-            color: #9ca3af;
+            color: var(--text-secondary);
         }}
         
         .menu-item:hover {{
             background: rgba(102, 126, 234, 0.1);
-            color: #e5e7eb;
-            border-left-color: #667eea;
+            color: var(--text-primary);
+            border-left-color: var(--accent-primary);
         }}
         
         .menu-item.active {{
             background: linear-gradient(90deg, rgba(102, 126, 234, 0.2), transparent);
-            color: #fff;
-            border-left-color: #667eea;
+            color: var(--text-primary);
+            border-left-color: var(--accent-primary);
             font-weight: 600;
         }}
         
@@ -133,40 +199,41 @@ async def root(request: Request):
         }}
         
         .card {{
-            background: rgba(31, 41, 55, 0.8);
+            background: var(--card-bg);
             backdrop-filter: blur(10px);
             border-radius: 16px;
             padding: 24px;
             margin-bottom: 24px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 20px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 6px var(--shadow-color), 0 10px 20px var(--shadow-color);
+            border: 1px solid var(--card-border);
+            transition: background 0.3s ease, border-color 0.3s ease;
         }}
         
         .card h3 {{
-            color: #667eea;
+            color: var(--accent-primary);
             margin-bottom: 20px;
             font-size: 20px;
             font-weight: 600;
             padding-bottom: 12px;
             border-bottom: 2px solid;
-            border-image: linear-gradient(90deg, #667eea, #764ba2) 1;
+            border-image: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary)) 1;
         }}
         
         .card h4 {{
-            color: #f3f4f6;
+            color: var(--text-primary);
             margin-bottom: 12px;
             font-size: 16px;
             font-weight: 500;
         }}
         
         .card p {{
-            color: #9ca3af;
+            color: var(--text-secondary);
             line-height: 1.6;
             margin-bottom: 12px;
         }}
         
         .card strong {{
-            color: #f3f4f6;
+            color: var(--text-primary);
         }}
         
         .stats {{
@@ -177,11 +244,11 @@ async def root(request: Request):
         }}
         
         .stat-box {{
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+            background: var(--stat-box-bg);
             padding: 24px;
             border-radius: 12px;
             text-align: center;
-            border: 1px solid rgba(102, 126, 234, 0.3);
+            border: 1px solid var(--stat-box-border);
             transition: transform 0.3s, box-shadow 0.3s;
         }}
         
@@ -193,12 +260,12 @@ async def root(request: Request):
         .stat-box .number {{
             font-size: 36px;
             font-weight: 700;
-            color: #667eea;
+            color: var(--accent-primary);
             margin-bottom: 8px;
         }}
         
         .stat-box .label {{
-            color: #9ca3af;
+            color: var(--text-secondary);
             font-size: 13px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -208,7 +275,7 @@ async def root(request: Request):
             width: 100%;
             border-collapse: collapse;
             margin-top: 16px;
-            background: rgba(17, 24, 39, 0.5);
+            background: var(--table-bg);
             border-radius: 8px;
             overflow: hidden;
         }}
@@ -217,7 +284,7 @@ async def root(request: Request):
             padding: 14px 16px;
             text-align: left;
             border-bottom: 2px solid rgba(102, 126, 234, 0.5);
-            color: #667eea;
+            color: var(--accent-primary);
             font-weight: 600;
             font-size: 13px;
             text-transform: uppercase;
@@ -228,13 +295,13 @@ async def root(request: Request):
         .data-table td {{
             padding: 14px 16px;
             text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            color: #d1d5db;
+            border-bottom: 1px solid var(--table-border);
+            color: var(--text-secondary);
             font-size: 14px;
         }}
         
         .data-table tr:hover {{
-            background: rgba(102, 126, 234, 0.08);
+            background: var(--hover-bg);
         }}
         
         .data-table tr:last-child td {{
@@ -270,10 +337,36 @@ async def root(request: Request):
             color: #fff;
         }}
         
+        /* 主题切换按钮 */
+        .theme-toggle {{
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 50px;
+            padding: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            transition: all 0.3s ease;
+        }}
+        
+        .theme-toggle:hover {{
+            transform: scale(1.1);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
+        }}
+        
+        .theme-toggle svg {{
+            width: 24px;
+            height: 24px;
+            fill: var(--text-primary);
+        }}
+        
         /* 移动端适配 */
         @media (max-width: 768px) {{
             body {{
-                background: #1a1a2e;
+                background: var(--bg-primary);
             }}
             
             .container {{
@@ -294,7 +387,7 @@ async def root(request: Request):
                 display: flex;
                 justify-content: space-around;
                 align-items: center;
-                background: #1f2937;
+                background: var(--sidebar-bg-start);
             }}
             
             .sidebar h2 {{
@@ -307,7 +400,7 @@ async def root(request: Request):
                 text-align: center;
                 border-bottom: 3px solid transparent;
                 font-size: 10px;
-                color: #9ca3af;
+                color: var(--text-secondary);
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -316,20 +409,20 @@ async def root(request: Request):
             }}
             
             .menu-item:hover {{
-                border-bottom-color: #667eea;
-                color: #e5e7eb;
+                border-bottom-color: var(--accent-primary);
+                color: var(--text-primary);
             }}
             
             .menu-item.active {{
-                border-bottom-color: #667eea;
+                border-bottom-color: var(--accent-primary);
                 background: rgba(102, 126, 234, 0.2);
-                color: #fff;
+                color: var(--text-primary);
             }}
             
             .content {{
                 flex: 1;
                 padding: 16px;
-                padding-bottom: 70px;
+                padding-bottom: 80px;
                 min-height: calc(100vh - 60px);
                 position: relative;
                 overflow-y: auto;
@@ -348,17 +441,12 @@ async def root(request: Request):
                 padding: 14px;
             }}
             
-            .stat-box .number {{
+            .stat-box .number{{
                 font-size: 24px;
             }}
             
-            .stat-box .label {{
-                font-size: 11px;
-            }}
-            
             .card {{
-                padding: 16px;
-                margin-bottom: 16px;
+                padding: 14px;
             }}
             
             .card h3 {{
@@ -375,6 +463,17 @@ async def root(request: Request):
             .data-table td {{
                 padding: 8px 6px;
             }}
+            
+            .theme-toggle {{
+                top: 10px;
+                right: 10px;
+                padding: 8px;
+            }}
+            
+            .theme-toggle svg {{
+                width: 20px;
+                height: 20px;
+            }}
         }}
         
         @media (max-width: 480px) {{
@@ -384,15 +483,7 @@ async def root(request: Request):
             }}
             
             .card {{
-                padding: 14px;
-            }}
-            
-            .card h3 {{
-                font-size: 16px;
-            }}
-            
-            .stat-box .number {{
-                font-size: 32px;
+                padding: 12px;
             }}
         }}
         
@@ -407,67 +498,20 @@ async def root(request: Request):
         }}
         
         ::-webkit-scrollbar-thumb {{
-            background: linear-gradient(180deg, #667eea, #764ba2);
+            background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
             border-radius: 4px;
-        }}
-        
-        ::-webkit-scrollbar-thumb:hover {{
-            background: linear-gradient(180deg, #764ba2, #667eea);
         }}
         
         /* 链接样式 */
         a {{
-            color: #667eea;
+            color: var(--accent-primary);
             text-decoration: none;
             transition: color 0.3s;
         }}
         
         a:hover {{
-            color: #764ba2;
+            color: var(--accent-secondary);
             text-decoration: underline;
-        }}
-        
-        /* 分页样式 */
-        .pagination {{
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            margin-top: 20px;
-            padding: 16px;
-        }}
-        
-        .pagination button {{
-            padding: 8px 16px;
-            background: rgba(102, 126, 234, 0.2);
-            border: 1px solid rgba(102, 126, 234, 0.5);
-            color: #667eea;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-size: 13px;
-        }}
-        
-        .pagination button:hover:not(:disabled) {{
-            background: rgba(102, 126, 234, 0.4);
-            transform: translateY(-1px);
-        }}
-        
-        .pagination button:disabled {{
-            opacity: 0.5;
-            cursor: not-allowed;
-        }}
-        
-        .pagination button.active {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border-color: transparent;
-        }}
-        
-        .pagination .page-info {{
-            color: #9ca3af;
-            font-size: 13px;
-            margin: 0 12px;
         }}
     </style>
 </head>
@@ -489,12 +533,70 @@ async def root(request: Request):
             </div>
         </div>
     </div>
+    
+    <!-- 主题切换按钮 -->
+    <div class="theme-toggle" onclick="toggleTheme()" id="themeToggle" title="切换主题">
+        <svg id="themeIcon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+    </div>
+    
     <script>
         const API_BASE = 'http://{host}/api';
         
-        // 分页状态
-        let stocksPage = 1;
-        let stocksPageSize = 10;
+        // 主题管理
+        let currentTheme = localStorage.getItem('theme') || 'auto';
+        
+        function applyTheme(theme) {{
+            if (theme === 'auto') {{
+                document.documentElement.removeAttribute('data-theme');
+            }} else {{
+                document.documentElement.setAttribute('data-theme', theme);
+            }}
+            updateThemeIcon(theme);
+        }}
+        
+        function updateThemeIcon(theme) {{
+            const svg = document.getElementById('themeIcon');
+            if (theme === 'light' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches)) {{
+                svg.innerHTML = '<path d="M20.354 15.354A9 9 0 018 9v4.586l3.293-3.293a1 1 0 001.414 1.414l-1 1a1 1 0 01-1.414 0l-2.293-2.293V21a1 1 0 01-1 1h-4a1 1 0 01-1-1v-2.586l-2.293 2.293a1 1 0 01-1.414 0l-1-1a1 1 0 010 1.414l3.293 3.293V15a9 9 0 01-9-9zm-6-10a7 7 0 100-14 0 7 7 0 0014 0z"/>';
+            }} else {{
+                svg.innerHTML = '<path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>';
+            }}
+        }}
+        
+        function toggleTheme() {{
+            const themes = ['auto', 'dark', 'light'];
+            const currentIndex = themes.indexOf(currentTheme);
+            current = (currentIndex + 1) % themes.length;
+            currentTheme = themes[currentIndex];
+            
+            localStorage.setItem('theme', currentTheme);
+            applyTheme(currentTheme);
+            
+            // 显示提示
+            showToast(`主题切换为: ${{getThemeName(currentTheme)}}`);
+        }}
+        
+        function getThemeName(theme) {{
+            switch(theme) {{
+                case 'auto': return '自动';
+                case 'dark': return '暗色';
+                case 'light': return '亮色';
+                default: return theme;
+            }}
+        }}
+        
+        function showToast(message) {{
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed; top:80px; right:20px; background:rgba(102,126,234,0.9); color:white; padding:12px 20px; border-radius:8px; z-index:9999; animation: fadeIn 0.3s;';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }}
+        
+        // 初始化主题
+        applyTheme(currentTheme);
         
         async function showPage(page, target) {{
             document.querySelectorAll('.menu-item').forEach(item => {{
@@ -572,7 +674,7 @@ async def root(request: Request):
                 <tr>
                     <td>${{i + 1}}</td>
                     <td><strong>${{rec.name}}</strong> (${{rec.ts_code}})</td>
-                    <td style="color: ${{rec.predicted_return > 0 ? '#28a745' : '#dc3545'}}">${{rec.predicted_return.toFixed(2)}}%</td>
+                    <td style="color: ${{rec.predicted_return > 0 ? '#10b981' : '#ef4444'}}">${{rec.predicted_return.toFixed(2)}}%</td>
                     <td>¥${{rec.current_price?.toFixed(2) || 'N/A'}}</td>
                     <td>${{rec.reasons?.join('<br>') || '无'}}</td>
                 </tr>
@@ -581,7 +683,7 @@ async def root(request: Request):
             document.getElementById('main-content').innerHTML = `
             <div class="card">
                 <h3>💡 今日推荐 (${{data.date}})</h3>
-                <table class="data-table">
+                <table>
                     <thead>
                         <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐理由</th></tr>
                     </thead>
@@ -591,7 +693,7 @@ async def root(request: Request):
         }}
         
         async function loadStocks() {{
-            const response = await fetch(`${{API_BASE}}/stocks?page=${{stocksPage}}&page_size=${{stocksPageSize}}`);
+            const response = await fetch(`${{API_BASE}}/stocks`);
             const data = await response.json();
             
             const html = data.stocks.map(stock => `
@@ -599,104 +701,20 @@ async def root(request: Request):
                     <td><strong>${{stock.name}}</strong> (${{stock.ts_code}})</td>
                     <td>${{stock.industry || 'N/A'}}</td>
                     <td>${{stock.market || 'N/A'}}</td>
-                    <td><a href="#" onclick="loadStockDetail('${{stock.ts_code}}'); return false;">查看详情</a></td>
+                    <td><a href="${{stock.url}}" target="_blank">查看详情</a></td>
                 </tr>
-            `).join('');
-            
-            // 生成分页HTML
-            let paginationHtml = '';
-            if (data.total_pages > 1) {{
-                const pageButtons = [];
-                // 上一页按钮
-                pageButtons.push(`<button ${{data.page <= 1 ? 'disabled' : ''}} onclick="changeStocksPage(${{data.page - 1}})">上一页</button>`);
-                
-                // 页码按钮（最多显示5个）
-                let startPage = Math.max(1, data.page - 2);
-                let endPage = Math.min(data.total_pages, startPage + 4);
-                if (endPage - startPage < 4) {{
-                    startPage = Math.max(1, endPage - 4);
-                }}
-                
-                for (let i = startPage; i <= endPage; i++) {{
-                    pageButtons.push(`<button class="${{i === data.page ? 'active' : ''}}" onclick="changeStocksPage(${{i}})">${{i}}</button>`);
-                }}
-                
-                // 下一页按钮
-                pageButtons.push(`<button ${{data.page >= data.total_pages ? 'disabled' : ''}} onclick="changeStocksPage(${{data.page + 1}})">下一页</button>`);
-                
-                paginationHtml = `
-                    <div class="pagination">
-                        ${{pageButtons.join('')}}
-                        <span class="page-info">${{data.page}} / ${{data.total_pages}} 页，共 ${{data.total}} 条</span>
-                    </div>
-                `;
-            }}
-            
-            document.getElementById('main-content').innerHTML = `
-                <div class="card">
-                    <h3>📈 股票列表</h3>
-                    <p style="margin-bottom: 12px; color: #9ca3af;">共有 ${{data.total}} 只股票</p>
-                    <table class="data-table">
-                        <thead>
-                            <tr><th>股票名称</th><th>行业</th><th>市场</th><th>操作</th></tr>
-                        </thead>
-                        <tbody>${{html || '<tr><td colspan="4">暂无股票数据</td></tr>'}}</tbody>
-                    </table>
-                    ${{paginationHtml}}
-                </div>`;
-        }}
-        
-        function changeStocksPage(page) {{
-            stocksPage = page;
-            loadStocks();
-        }}
-        
-        async function loadStockDetail(ts_code) {{
-            const response = await fetch(`${{API_BASE}}/stocks/${{ts_code}}`);
-            const data = await response.json();
-            
-            const pricesHtml = data.prices.slice(0, 20).map(p => `
-                <tr>
-                    <td>${{p.trade_date}}</td>
-                    <td>¥${{p.open?.toFixed(2) || 'N/A'}}</td>
-                    <td>¥${{p.high?.toFixed(2) || 'N/A'}}</td>
-                    <td>¥${{p.low?.toFixed(2) || 'N/A'}}</td>
-                    <td>¥${{p.close?.toFixed(2) || 'N/A'}}</td>
-                    <td style="color: ${{p.pct_chg > 0 ? '#28a745' : p.pct_chg < 0 ? '#dc3545' : '#6c757d'}};">${{p.pct_chg?.toFixed(2) || 0}}%</td>
-                </tr>
-            `).join('');
-            
-            const newsHtml = data.news.map(n => `
-                <div style="margin-bottom: 12px; padding: 10px; background: rgba(17, 24, 39, 0.3); border-radius: 8px;">
-                    <h4 style="margin-bottom: 6px;">${{n.title}}</h4>
-                    <p style="font-size: 12px; color: #9ca3af; margin-bottom: 6px;">${{new Date(n.pub_date).toLocaleString('zh-CN')}} | 情感: ${{n.sentiment?.toFixed(2) || 'N/A'}}</p>
-                    <p style="font-size: 13px; color: #d1d5db;">${{n.content || '无内容'}}</p>
-                    ${{n.url ? `<a href="${{n.url}}" target="_blank" style="font-size: 12px;">阅读原文 →</a>` : ''}}
-                </div>
             `).join('');
             
             document.getElementById('main-content').innerHTML = `
             <div class="card">
-                <h3>📊 ${{data.stock.name}} (${{data.stock.ts_code}})</h3>
-                <div style="margin-bottom: 20px;">
-                    <strong>行业:</strong> ${{data.stock.industry || 'N/A'}} | 
-                    <strong>市场:</strong> ${{data.stock.market || 'N/A'}}
-                </div>
-                
-                <h4>💰 近20日价格走势</h4>
-                <table style="margin-bottom: 24px;">
+                <h3>📈 股票列表</h3>
+                <p style="margin-bottom: 12px; color: #9ca3af;">共有 ${{data.count}} 只股票</p>
+                <table>
                     <thead>
-                        <tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>涨跌幅</th></tr>
+                        <tr><th>股票名称</th><th>行业</th><th>市场</th><th>操作</th></tr>
                     </thead>
-                    <tbody>${{pricesHtml || '<tr><td colspan="6">暂无价格数据</td></tr>'}}</tbody>
+                    <tbody>${{html || '<tr><td colspan="4">暂无股票数据</td></tr>'}}</tbody>
                 </table>
-                
-                <h4>📰 相关新闻</h4>
-                ${{newsHtml || '<p>暂无新闻数据</p>'}}
-                
-                <div style="margin-top: 20px;">
-                    <a href="#" onclick="loadStocks(); return false;" style="color: #667eea;">← 返回列表</a>
-                </div>
             </div>`;
         }}
         
@@ -737,10 +755,10 @@ async def root(request: Request):
                 <h3>⏰ 任务日志</h3>
                 <div style="margin-bottom: 15px;">
                     <span>总任务数: ${{data.total || 0}}</span> |
-                    <span style="color: #28a745;">成功: ${{data.success || 0}}</span> |
-                    <span style="color: #dc3545;">失败: ${{data.failed || 0}}</span>
+                    <span style="color: #10b981;">成功: ${{data.success || 0}}</span> |
+                    <span style="color: #ef4444;">失败: ${{data.failed || 0}}</span>
                 </div>
-                <table class="data-table">
+                <table>
                     <thead>
                         <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th></tr>
                     </thead>
@@ -753,13 +771,16 @@ async def root(request: Request):
             document.getElementById('main-content').innerHTML = `
             <div class="card">
                 <h3>⚙️ 系统设置</h3>
+                <h4>主题设置</h4>
+                <p>当前主题: <strong>${{getThemeName(currentTheme)}}</strong></p>
+                <p>点击右上角按钮可在 <strong>自动/暗色/亮色</strong> 之间切换</p>
                 <h4>数据源配置</h4>
                 <p>当前使用 Tushare 接口获取股票数据</p>
                 <h4>数据库</h4>
                 <p>MySQL 本地数据库</p>
                 <h4>任务调度</h4>
                 <p>Celery Beat 定时任务 (每日早上9:00生成推荐)</p>
-                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                <div style="margin-top: 20px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 5px;">
                     <strong>提示:</strong> 更多配置请修改 .env 文件或联系管理员
                 </div>
             </div>`;
@@ -770,19 +791,15 @@ async def root(request: Request):
         
         // 自动刷新
         setInterval(loadDashboard, 30000);
+        
+        // 添加样式
+        const style = document.createElement('style');
+        style.textContent = `@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-10px); }} to {{ opacity: 1; transform: translateY(0); }} }}`;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>
 """
-
-
-@app.get("/health")
-async def health_check():
-    """健康检查"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat()
-    }
 
 
 # API endpoints
@@ -790,7 +807,21 @@ async def health_check():
 async def get_today_recommendations(db: Session = Depends(get_db)):
     """获取今日推荐"""
     try:
-        today = recommender.get_today_recommendations(db)
+        if recommender:
+            today = recommender.get_today_recommendations(db)
+        else:
+            today = db.query(Recommendation).filter(
+                Recommendation.recommend_date == datetime.now().strftime('%Y-%m-%d')
+            ).all()
+            today = [{
+                "rank": rec.rank,
+                "ts_code": rec.ts_code,
+                "name": rec.name,
+                "predicted_return": rec.predicted_return,
+                "current_price": rec.current_price,
+                "reasons": rec.reasons.split('\\n') if rec.reasons else []
+            } for rec in today]
+        
         return {
             "date": datetime.now().strftime('%Y-%m-%d'),
             "count": len(today),
@@ -840,7 +871,10 @@ async def get_recommendation_history(days: int = 7, db: Session = Depends(get_db
 async def generate_recommendations():
     """生成新的推荐"""
     try:
-        recs = recommender.generate_recommendations(top_n=10)
+        if recommender:
+            recs = recommender.generate_recommendations(top_n=10)
+        else:
+            recs = []
         return {
             "status": "success",
             "count": len(recs),
@@ -852,41 +886,20 @@ async def generate_recommendations():
 
 
 @app.get("/api/stocks")
-async def list_stocks(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
-    """获取股票列表（支持分页）"""
+async def get_stocks(db: Session = Depends(get_db)):
+    """获取股票列表"""
     try:
-        # 获取总数
-        total = db.query(Stock).count()
-        
-        # 计算偏移量
-        offset = (page - 1) * page_size
-        
-        # 获取当前页数据
-        stocks = db.query(Stock).offset(offset).limit(page_size).all()
-        
-        result = []
-        for stock in stocks:
-            stock_url = getattr(stock, 'url', None)
-            if not stock_url:
-                # 自动生成雪球链接
-                stock_url = f"https://xueqiu.com/S/{stock.ts_code}"
-            
-            result.append({
+        stocks = db.query(Stock).order_by(Stock.ts_code).all()
+        return {
+            "count": len(stocks),
+            "stocks": [{
                 "ts_code": stock.ts_code,
                 "name": stock.name,
                 "industry": stock.industry,
                 "market": stock.market,
-                "url": stock_url
-            })
-        
-        total_pages = (total + page_size - 1) // page_size
-        
-        return {
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": total_pages,
-            "stocks": result
+                "url": stock.url,
+                "updated_at": stock.updated_at.isoformat() if stock.updated_at else None
+            } for stock in stocks]
         }
     except Exception as e:
         logger.error(f"获取股票列表失败: {e}")
@@ -894,148 +907,15 @@ async def list_stocks(page: int = 1, page_size: int = 10, db: Session = Depends(
 
 
 @app.get("/api/news")
-async def list_news(limit: int = 50, db: Session = Depends(get_db)):
-    """获取新闻列表"""
+async def get_news(db: Session = Depends(get_db)):
+    """获取新闻数据"""
     try:
-        news = db.query(StockNews).order_by(StockNews.pub_date.desc()).limit(limit).all()
-        
-        result = []
-        for n in news:
-            result.append({
-                "title": n.title,
-                "url": n.url,
-                "pub_date": n.pub_date.isoformat() if n.pub_date else None,
-                "sentiment": n.sentiment
-            })
-        
+        news = db.query(StockNews).order_by(StockNews.pub_date.desc()).limit(50).all()
         return {
-            "count": len(result),
-            "news": result
-        }
-    except Exception as e:
-        logger.error(f"获取新闻失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/stocks/{ts_code}")
-async def get_stock_detail(ts_code: str, db: Session = Depends(get_db)):
-    """获取股票详情（价格走势 + 新闻）"""
-    try:
-        # 获取股票基本信息
-        stock = db.query(Stock).filter(Stock.ts_code == ts_code).first()
-        if not stock:
-            raise HTTPException(status_code=404, detail=f"股票 {ts_code} 不存在")
-        
-        # 获取近20日价格数据
-        prices = db.query(StockPrice).filter(
-            StockPrice.ts_code == ts_code
-        ).order_by(StockPrice.trade_date.desc()).limit(20).all()
-        
-        prices_list = [{
-            "trade_date": p.trade_date,
-            "open": p.open,
-            "high": p.high,
-            "low": p.low,
-            "close": p.close,
-            "vol": p.vol,
-            "amount": p.amount,
-            "pct_chg": p.pct_chg
-        } for p in prices]
-        
-        # 获取相关新闻（这里简单返回所有新闻，实际可以按股票代码过滤）
-        news = db.query(StockNews).order_by(
-            StockNews.pub_date.desc()
-        ).limit(10).all()
-        
-        news_list = [{
-            "title": n.title,
-            "content": n.content,
-            "url": n.url,
-            "pub_date": n.pub_date.isoformat() if n.pub_date else None,
-            "sentiment": n.sentiment
-        } for n in news]
-        
-        return {
-            "stock": {
-                "ts_code": stock.ts_code,
-                "name": stock.name,
-                "industry": stock.industry,
-                "market": stock.market
-            },
-            "prices": prices_list,
-            "news": news_list
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取股票详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/tasks/recent")
-async def get_recent_tasks(limit: int = 10, db: Session = Depends(get_db)):
-    """获取最近任务日志"""
-    try:
-        tasks = db.query(TaskLog).order_by(
-            TaskLog.start_time.desc()
-        ).limit(limit).all()
-        
-        # 统计
-        total = db.query(func.count(TaskLog.id)).scalar()
-        success = db.query(func.count(TaskLog.id)).filter(TaskLog.status == 'success').scalar()
-        failed = db.query(func.count(TaskLog.id)).filter(TaskLog.status == 'failed').scalar()
-        
-        result = []
-        for task in tasks:
-            result.append({
-                "task_name": task.task_name,
-                "task_type": task.task_type,
-                "status": task.status,
-                "start_time": task.start_time.isoformat() if task.start_time else None,
-                "duration_seconds": task.duration_seconds,
-                "message": task.message,
-                "error": task.error
-            })
-        
-        return {
-            "total": total,
-            "success": success,
-            "failed": failed,
-            "logs": result
-        }
-    except Exception as e:
-        logger.error(f"获取任务日志失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/system/status")
-async def system_status(db: Session = Depends(get_db)):
-    """获取系统状态"""
-    try:
-        latest_health = db.query(SystemHealth).order_by(
-            SystemHealth.check_time.desc()
-        ).first()
-        
-        latest_rec = db.query(func.max(Recommendation.created_at)).scalar()
-        
-        return {
-            "status": "running",
-            "last_health_check": latest_health.check_time.isoformat() if latest_health else None,
-            "last_recommendation": latest_rec.isoformat() if latest_rec else None,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"获取系统状态失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-if __name__ == "__main__":
-    import uvicorn
-    
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        log_level="info"
-    )
+            "count": len(news),
+            "news": [{
+                "title": item.title,
+                "content": item.content,
+                "url": item.url,
+                "pub_time": item.pub_date.isoformat() if item.pub_date else None,
+                "sentiment": item

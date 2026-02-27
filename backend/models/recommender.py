@@ -50,7 +50,8 @@ class StockRecommender:
                 # 预测
                 pred = self.predictor.predict(stock.ts_code, db)
 
-                if pred and pred['predicted_return'] > 0:
+                # 只推荐预测收益为正且价格在15元以下的股票
+                if pred and pred['predicted_return'] > 0 and pred['current_price'] < 15:
                     pred['name'] = stock.name
                     predictions.append(pred)
 

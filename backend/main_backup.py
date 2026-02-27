@@ -426,49 +426,6 @@ async def root(request: Request):
             color: #764ba2;
             text-decoration: underline;
         }}
-        
-        /* 分页样式 */
-        .pagination {{
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            margin-top: 20px;
-            padding: 16px;
-        }}
-        
-        .pagination button {{
-            padding: 8px 16px;
-            background: rgba(102, 126, 234, 0.2);
-            border: 1px solid rgba(102, 126, 234, 0.5);
-            color: #667eea;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-size: 13px;
-        }}
-        
-        .pagination button:hover:not(:disabled) {{
-            background: rgba(102, 126, 234, 0.4);
-            transform: translateY(-1px);
-        }}
-        
-        .pagination button:disabled {{
-            opacity: 0.5;
-            cursor: not-allowed;
-        }}
-        
-        .pagination button.active {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border-color: transparent;
-        }}
-        
-        .pagination .page-info {{
-            color: #9ca3af;
-            font-size: 13px;
-            margin: 0 12px;
-        }}
     </style>
 </head>
 <body>
@@ -491,10 +448,6 @@ async def root(request: Request):
     </div>
     <script>
         const API_BASE = 'http://{host}/api';
-        
-        // 分页状态
-        let stocksPage = 1;
-        let stocksPageSize = 10;
         
         async function showPage(page, target) {{
             document.querySelectorAll('.menu-item').forEach(item => {{
@@ -581,7 +534,7 @@ async def root(request: Request):
             document.getElementById('main-content').innerHTML = `
             <div class="card">
                 <h3>💡 今日推荐 (${{data.date}})</h3>
-                <table class="data-table">
+                <table>
                     <thead>
                         <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐理由</th></tr>
                     </thead>
@@ -591,7 +544,7 @@ async def root(request: Request):
         }}
         
         async function loadStocks() {{
-            const response = await fetch(`${{API_BASE}}/stocks?page=${{stocksPage}}&page_size=${{stocksPageSize}}`);
+            const response = await fetch(`${{API_BASE}}/stocks`);
             const data = await response.json();
             
             const html = data.stocks.map(stock => `
@@ -599,104 +552,20 @@ async def root(request: Request):
                     <td><strong>${{stock.name}}</strong> (${{stock.ts_code}})</td>
                     <td>${{stock.industry || 'N/A'}}</td>
                     <td>${{stock.market || 'N/A'}}</td>
-                    <td><a href="#" onclick="loadStockDetail('${{stock.ts_code}}'); return false;">查看详情</a></td>
+                    <td><a href="${{stock.url}}" target="_blank">查看详情</a></td>
                 </tr>
-            `).join('');
-            
-            // 生成分页HTML
-            let paginationHtml = '';
-            if (data.total_pages > 1) {{
-                const pageButtons = [];
-                // 上一页按钮
-                pageButtons.push(`<button ${{data.page <= 1 ? 'disabled' : ''}} onclick="changeStocksPage(${{data.page - 1}})">上一页</button>`);
-                
-                // 页码按钮（最多显示5个）
-                let startPage = Math.max(1, data.page - 2);
-                let endPage = Math.min(data.total_pages, startPage + 4);
-                if (endPage - startPage < 4) {{
-                    startPage = Math.max(1, endPage - 4);
-                }}
-                
-                for (let i = startPage; i <= endPage; i++) {{
-                    pageButtons.push(`<button class="${{i === data.page ? 'active' : ''}}" onclick="changeStocksPage(${{i}})">${{i}}</button>`);
-                }}
-                
-                // 下一页按钮
-                pageButtons.push(`<button ${{data.page >= data.total_pages ? 'disabled' : ''}} onclick="changeStocksPage(${{data.page + 1}})">下一页</button>`);
-                
-                paginationHtml = `
-                    <div class="pagination">
-                        ${{pageButtons.join('')}}
-                        <span class="page-info">${{data.page}} / ${{data.total_pages}} 页，共 ${{data.total}} 条</span>
-                    </div>
-                `;
-            }}
-            
-            document.getElementById('main-content').innerHTML = `
-                <div class="card">
-                    <h3>📈 股票列表</h3>
-                    <p style="margin-bottom: 12px; color: #9ca3af;">共有 ${{data.total}} 只股票</p>
-                    <table class="data-table">
-                        <thead>
-                            <tr><th>股票名称</th><th>行业</th><th>市场</th><th>操作</th></tr>
-                        </thead>
-                        <tbody>${{html || '<tr><td colspan="4">暂无股票数据</td></tr>'}}</tbody>
-                    </table>
-                    ${{paginationHtml}}
-                </div>`;
-        }}
-        
-        function changeStocksPage(page) {{
-            stocksPage = page;
-            loadStocks();
-        }}
-        
-        async function loadStockDetail(ts_code) {{
-            const response = await fetch(`${{API_BASE}}/stocks/${{ts_code}}`);
-            const data = await response.json();
-            
-            const pricesHtml = data.prices.slice(0, 20).map(p => `
-                <tr>
-                    <td>${{p.trade_date}}</td>
-                    <td>¥${{p.open?.toFixed(2) || 'N/A'}}</td>
-                    <td>¥${{p.high?.toFixed(2) || 'N/A'}}</td>
-                    <td>¥${{p.low?.toFixed(2) || 'N/A'}}</td>
-                    <td>¥${{p.close?.toFixed(2) || 'N/A'}}</td>
-                    <td style="color: ${{p.pct_chg > 0 ? '#28a745' : p.pct_chg < 0 ? '#dc3545' : '#6c757d'}};">${{p.pct_chg?.toFixed(2) || 0}}%</td>
-                </tr>
-            `).join('');
-            
-            const newsHtml = data.news.map(n => `
-                <div style="margin-bottom: 12px; padding: 10px; background: rgba(17, 24, 39, 0.3); border-radius: 8px;">
-                    <h4 style="margin-bottom: 6px;">${{n.title}}</h4>
-                    <p style="font-size: 12px; color: #9ca3af; margin-bottom: 6px;">${{new Date(n.pub_date).toLocaleString('zh-CN')}} | 情感: ${{n.sentiment?.toFixed(2) || 'N/A'}}</p>
-                    <p style="font-size: 13px; color: #d1d5db;">${{n.content || '无内容'}}</p>
-                    ${{n.url ? `<a href="${{n.url}}" target="_blank" style="font-size: 12px;">阅读原文 →</a>` : ''}}
-                </div>
             `).join('');
             
             document.getElementById('main-content').innerHTML = `
             <div class="card">
-                <h3>📊 ${{data.stock.name}} (${{data.stock.ts_code}})</h3>
-                <div style="margin-bottom: 20px;">
-                    <strong>行业:</strong> ${{data.stock.industry || 'N/A'}} | 
-                    <strong>市场:</strong> ${{data.stock.market || 'N/A'}}
-                </div>
-                
-                <h4>💰 近20日价格走势</h4>
-                <table style="margin-bottom: 24px;">
+                <h3>📈 股票列表</h3>
+                <p style="margin-bottom: 12px; color: #9ca3af;">共有 ${{data.count}} 只股票</p>
+                <table>
                     <thead>
-                        <tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>涨跌幅</th></tr>
+                        <tr><th>股票名称</th><th>行业</th><th>市场</th><th>操作</th></tr>
                     </thead>
-                    <tbody>${{pricesHtml || '<tr><td colspan="6">暂无价格数据</td></tr>'}}</tbody>
+                    <tbody>${{html || '<tr><td colspan="4">暂无股票数据</td></tr>'}}</tbody>
                 </table>
-                
-                <h4>📰 相关新闻</h4>
-                ${{newsHtml || '<p>暂无新闻数据</p>'}}
-                
-                <div style="margin-top: 20px;">
-                    <a href="#" onclick="loadStocks(); return false;" style="color: #667eea;">← 返回列表</a>
-                </div>
             </div>`;
         }}
         
@@ -740,7 +609,7 @@ async def root(request: Request):
                     <span style="color: #28a745;">成功: ${{data.success || 0}}</span> |
                     <span style="color: #dc3545;">失败: ${{data.failed || 0}}</span>
                 </div>
-                <table class="data-table">
+                <table>
                     <thead>
                         <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th></tr>
                     </thead>
@@ -852,40 +721,22 @@ async def generate_recommendations():
 
 
 @app.get("/api/stocks")
-async def list_stocks(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
-    """获取股票列表（支持分页）"""
+async def list_stocks(limit: int = 100, db: Session = Depends(get_db)):
+    """获取股票列表"""
     try:
-        # 获取总数
-        total = db.query(Stock).count()
-        
-        # 计算偏移量
-        offset = (page - 1) * page_size
-        
-        # 获取当前页数据
-        stocks = db.query(Stock).offset(offset).limit(page_size).all()
+        stocks = db.query(Stock).limit(limit).all()
         
         result = []
         for stock in stocks:
-            stock_url = getattr(stock, 'url', None)
-            if not stock_url:
-                # 自动生成雪球链接
-                stock_url = f"https://xueqiu.com/S/{stock.ts_code}"
-            
             result.append({
                 "ts_code": stock.ts_code,
                 "name": stock.name,
                 "industry": stock.industry,
-                "market": stock.market,
-                "url": stock_url
+                "market": stock.market
             })
         
-        total_pages = (total + page_size - 1) // page_size
-        
         return {
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": total_pages,
+            "count": len(result),
             "stocks": result
         }
     except Exception as e:
@@ -914,61 +765,6 @@ async def list_news(limit: int = 50, db: Session = Depends(get_db)):
         }
     except Exception as e:
         logger.error(f"获取新闻失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/stocks/{ts_code}")
-async def get_stock_detail(ts_code: str, db: Session = Depends(get_db)):
-    """获取股票详情（价格走势 + 新闻）"""
-    try:
-        # 获取股票基本信息
-        stock = db.query(Stock).filter(Stock.ts_code == ts_code).first()
-        if not stock:
-            raise HTTPException(status_code=404, detail=f"股票 {ts_code} 不存在")
-        
-        # 获取近20日价格数据
-        prices = db.query(StockPrice).filter(
-            StockPrice.ts_code == ts_code
-        ).order_by(StockPrice.trade_date.desc()).limit(20).all()
-        
-        prices_list = [{
-            "trade_date": p.trade_date,
-            "open": p.open,
-            "high": p.high,
-            "low": p.low,
-            "close": p.close,
-            "vol": p.vol,
-            "amount": p.amount,
-            "pct_chg": p.pct_chg
-        } for p in prices]
-        
-        # 获取相关新闻（这里简单返回所有新闻，实际可以按股票代码过滤）
-        news = db.query(StockNews).order_by(
-            StockNews.pub_date.desc()
-        ).limit(10).all()
-        
-        news_list = [{
-            "title": n.title,
-            "content": n.content,
-            "url": n.url,
-            "pub_date": n.pub_date.isoformat() if n.pub_date else None,
-            "sentiment": n.sentiment
-        } for n in news]
-        
-        return {
-            "stock": {
-                "ts_code": stock.ts_code,
-                "name": stock.name,
-                "industry": stock.industry,
-                "market": stock.market
-            },
-            "prices": prices_list,
-            "news": news_list
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取股票详情失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
