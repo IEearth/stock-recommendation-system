@@ -544,7 +544,7 @@ async def root(request: Request):
                     <h3>📊 系统概览</h3>
                     <div class="stats">
                         <div class="stat-box">
-                            <div class="number">${{data2.count}}</div>
+                            <div class="number">${{data2.total || 0}}</div>
                             <div class="label">今日推荐</div>
                         </div>
                         <div class="stat-box">
@@ -867,11 +867,11 @@ async def root(request: Request):
             const resultDiv = document.getElementById('generate-result');
 
             if (parseFloat(minPrice) >= parseFloat(maxPrice)) {{
-                resultDiv.innerHTML = '<span style="color: #ef4444;">❌ 最低价格必须小于最高价格</span>';
+                resultDiv.innerHTML = '<span style="color: #ef4444;">Error: Min price must be less than max price</span>';
                 return;
             }}
 
-            resultDiv.innerHTML = '<span style="color: #667eea;">⏳ 生成中...</span>';
+            resultDiv.innerHTML = '<span style="color: #667eea;">Generating...</span>';
 
             try {{
                 const response = await fetch(`${{API_BASE}}/recommendations/generate?min_price=${{minPrice}}&max_price=${{maxPrice}}`, {{
@@ -880,14 +880,13 @@ async def root(request: Request):
                 const data = await response.json();
 
                 if (data.status === 'success') {{
-                    resultDiv.innerHTML = `<span style="color: #10b981;">✅ ${data.message}（价格范围：¥${{minPrice}}-${{maxPrice}}）</span>`;
-                    // 2秒后跳转到推荐页面
+                    resultDiv.innerHTML = '<span style="color: #10b981;">Success: ' + data.message + ' (Price: CNY' + minPrice + '-' + maxPrice + ')</span>';
                     setTimeout(() => showPage('recommendations', document.querySelector('.menu-item:nth-child(3)')), 2000);
                 }} else {{
-                    resultDiv.innerHTML = `<span style="color: #ef4444;">❌ 生成失败: ${data.message}</span>`;
+                    resultDiv.innerHTML = '<span style="color: #ef4444;">Failed: ' + data.message + '</span>';
                 }}
             }} catch (error) {{
-                resultDiv.innerHTML = `<span style="color: #ef4444;">❌ 请求失败: ${error.message}</span>`;
+                resultDiv.innerHTML = '<span style="color: #ef4444;">Error: ' + error.message + '</span>';
             }}
         }}
         
