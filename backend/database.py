@@ -176,6 +176,29 @@ def get_db():
         db.close()
 
 
+class DatabaseSessionManager:
+    """数据库会话管理器 - 支持上下文管理"""
+    
+    def __init__(self):
+        self.db = None
+    
+    def __enter__(self):
+        self.db = SessionLocal()
+        return self.db
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.db:
+            if exc_type:
+                self.db.rollback()
+            self.db.close()
+        return False
+
+
+def get_db_session():
+    """获取数据库会话上下文管理器"""
+    return DatabaseSessionManager()
+
+
 if __name__ == "__main__":
     init_db()
     print(f"数据库类型: {'MySQL' if DATABASE_URL.startswith('mysql') else 'SQLite'}")
