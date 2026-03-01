@@ -1,5 +1,5 @@
 """
-股票推荐引擎（优化版）
+股票推荐引擎（优化版 - 支持交易日判断）
 """
 import logging
 from datetime import datetime
@@ -23,19 +23,60 @@ class StockRecommender:
         """初始化"""
         self.predictor = StockPredictor()
 
-    def generate_recommendations(self, top_n: int = 10, min_price: float = 0, max_price: float = 15, db_session=None) -> List[Recommendation]:
-        """生成推荐
+        # 导入交易日检查器
+        try:
+            from utils.trading_day_checker import get_trading_day_checker
+            self.trading_checker = get_trading_day_checker()
+            logger.info("✅ 交易日检查器已启用")
+        except ImportError:
+            logger.warning("⚠️ 交易日检查器未找到，将不执行交易日检查")
+            self.trading_checker = None
+
+    def should_run_today(self, force: bool = False) -> tuple:
+        """
+        判断今天是否应该执行推荐
+
+        Args:
+            force: 是否强制执行
+
+        Returns:
+            (是否执行, 原因)
+        """
+        if force:
+            return True, "强制执行"
+
+        if self.trading_checker is None:
+            return True, "交易日检查器未启用，默认执行"
+
+        should_run, reason = self.trading_checker.should_run_today()
+
+        if not should_run:
+            logger.info(f"⏭️  跳过今日推荐: {reason}")
+
+        return should_run, reason
+
+    def generate_recommendations(self, top_n: int = 10, min_price: float = 0, max_price: float = 15, db_session=None, force: bool = False) -> List[Recommendation]:
+        """
+        生成推荐
 
         Args:
             top_n: 推荐数量
             min_price: 最低股价
             max_price: 最高股价
             db_session: 数据库会话
+            force: 强制执行（忽略交易日检查）
 
         Returns:
             list: 推荐列表
         """
         try:
+            # 检查是否为交易日
+            should_run, reason = self.should_run_today(force=force)
+
+            if not should_run:
+                logger.info(f"⏭️  跳过推荐生成: {reason}")
+                return []
+
             if db_session is None:
                 with get_db_session() as db:
                     return self._generate_recommendations_internal(db, top_n, min_price, max_price)
@@ -159,8 +200,17 @@ if __name__ == "__main__":
     init_db()
 
     recommender = StockRecommender()
+
+    # 测试交易日检查
+    print("测试交易日检查:")
+    should_run, reason = recommender.should_run_today()
+    print(f"应该运行: {should_run}, 原因: {reason}")
+
+    # 测试推荐生成
+    print("\n测试推荐生成:")
     recs = recommender.generate_recommendations(top_n=5)
     print(f"生成了 {len(recs)} 个推荐")
 
+    # 测试获取今日推荐
     today_recs = recommender.get_today_recommendations()
     print(f"今日推荐: {len(today_recs)}")

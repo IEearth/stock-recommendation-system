@@ -1,0 +1,414 @@
+<!-- 前端任务配置管理页面追加部分，需要插入到主HTML文件中 -->
+<script>
+    // 全局变量
+    let taskConfigs = [];
+
+    // 加载任务配置页面
+    async function loadTaskConfigs() {
+        try {
+            const response = await fetch(`${API_BASE}/task-configs`);
+            const data = await response.json();
+            
+            taskConfigs = data.configs || [];
+
+            const html = taskConfigs.map(config => {
+                const triggerDisplay = config.cron_expression 
+                    ? `Cron: ${config.cron_expression}` 
+                    : `间隔: ${config.interval_seconds ? config.interval_seconds + '秒' : '未设置'}`;
+                
+                return `
+                    <tr>
+                        <td><strong>${config.task_name}</strong></td>
+                        <td>${config.task_type || 'N/A'}</td>
+                        <td>
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${config.is_enabled ? 'checked' : ''} onchange="toggleTask('${config.task_name}')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </td>
+                        <td>${triggerDisplay}</td>
+                        <td>${config.last_run_time ? new Date(config.last_run_time).toLocaleString('zh-CN') : '未运行'}</td>
+                        <td>${config.description || '无描述'}</td>
+                        <td>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="showEditTaskConfig('${config.task_name}')" class="btn btn-secondary btn-sm">编辑</button>
+                                <button onclick="triggerTask('${config.task_name}')" class="btn btn-primary btn-sm">触发</button>
+                                <button onclick="deleteTaskConfig('${config.task_name}')" class="btn btn-danger btn-sm">删除</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('') || '<tr><td colspan="7">暂无任务配置</td></tr>';
+
+            document.getElementById('main-content').innerHTML = `
+                <div class="content-header">
+                    <h1>⚙️ 任务配置管理</h1>
+                    <button class="btn btn-primary" onclick="showCreateTaskConfig()">
+                        <span>+ 新建任务</span>
+                    </button>
+                </div>
+                
+                <div class="card">
+                    <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                        共 <strong style="color: var(--text-primary);">${taskConfigs.length}</strong> 个任务配置，
+                        其中 <strong style="color: var(--success);">${taskConfigs.filter(c => c.is_enabled).length}</strong> 个已启用
+                    </p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>任务名称</th>
+                                <th>类型</th>
+                                <th>启用</th>
+                                <th>触发器</th>
+                                <th>上次运行</th>
+                                <th>描述</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>${html}</tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            console.error('加载任务配置失败:', error);
+        }
+    }
+
+    // 切换任务启用状态
+    async function toggleTask(taskName) {
+        try {
+            const response = await fetch(`${API_BASE}/task-configs/${taskName}/toggle`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                await loadTaskConfigs();
+            } else {
+                alert('操作失败: ' + data.message);
+            }
+        } catch (error) {
+            console.error('切换任务状态失败:', error);
+            alert('操作失败: ' + error.message);
+        }
+    }
+
+    // 显示创建任务配置表单
+    function showCreateTaskConfig() {
+        document.getElementById('modal-overlay').style.display = 'flex';
+        document.getElementById('modal-content').innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                <h3 style="margin: 0; font-size: 18px;">新建任务配置</h3>
+                <button onclick="closeModal()" style="background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer;">&times;</button>
+            </div>
+            
+            <form id="create-task-form" onsubmit="createTaskConfig(event)">
+                <div class="form-group">
+                    <label>任务名称 *</label>
+                    <input type="text" id="task-name" required placeholder="例如: update_stock_list">
+                </div>
+                
+                <div class="form-group">
+                    <label>任务类型</label>
+                    <select id="task-type">
+                        <option value="daily_update">daily_update</option>
+                        <option value="data_fetch">data_fetch</option>
+                        <option value="recommendation">recommendation</option>
+                        <option value="health_check">health_check</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>启用状态</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="task-enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>执行间隔（秒）</label>
+                    <input type="number" id="task-interval" placeholder="例如: 3600 (1小时)" min="0">
+                </div>
+                
+                <div class="form-group">
+                    <label>Cron 表达式（可选，优先级高于间隔）</label>
+                    <input type="text" id="task-cron" placeholder="例如: 0 2 * * * (每天凌晨2点)">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">格式: 分 时 日 月 周</p>
+                </div>
+                
+                <div class="form-group">
+                    <label>任务描述</label>
+                    <textarea id="task-description" placeholder="描述该任务的用途..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>额外配置 (JSON)</label>
+                    <textarea id="task-config-json" placeholder='{"min_price": 0, "max_price": 100}'></textarea>
+                </div>
+                
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" onclick="closeModal()" class="btn btn-secondary">取消</button>
+                    <button type="submit" class="btn btn-primary">创建</button>
+                </div>
+            </form>
+        `;
+    }
+
+    // 创建任务配置
+    async function createTaskConfig(event) {
+        event.preventDefault();
+        
+        const configData = {
+            task_name: document.getElementById('task-name').value,
+            task_type: document.getElementById('task-type').value,
+            is_enabled: document.getElementById('task-enabled').checked,
+            interval_seconds: document.getElementById('task-interval').value ? parseInt(document.getElementById('task-interval').value) : null,
+            cron_expression: document.getElementById('task-cron').value || null,
+            description: document.getElementById('task-description').value,
+            config_json: document.getElementById('task-config config-json').value ? JSON.parse(document.getElementById('task-config-json').value) : null
+        };
+        
+        try {
+            const response = await fetch(`${API_BASE}/task-configs`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(configData)
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                closeModal();
+                await loadTaskConfigs();
+            } else {
+                alert('创建失败: ' + data.message);
+            }
+        } catch (error) {
+            console.error('创建任务配置失败:', error);
+            alert('创建失败: ' + error.message);
+        }
+    }
+
+    // 显示编辑任务配置表单
+    function showEditTaskConfig(taskName) {
+        const config = taskConfigs.find(c => c.task_name === taskName);
+        if (!config) return;
+        
+        document.getElementById('modal-overlay').style.display = 'flex';
+        document.getElementById('modal-content').innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                <h3 style="margin: 0; font-size: 18px;">编辑任务配置 - ${taskName}</h3>
+                <button onclick="closeModal()" style="background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer;">&times;</button>
+            </div>
+            
+            <form id="edit-task-form" onsubmit="updateTaskConfig(event, '${taskName}')">
+                <div class="form-group">
+                    <label>任务名称</label>
+                    <input type="text" id="task-name" value="${config.task_name}" disabled style="opacity: 0.6;">
+                </div>
+                
+                <div class="form-group">
+                    <label>任务类型</label>
+                    <select id="task-type">
+                        <option value="daily_update" ${config.task_type === 'daily_update' ? 'selected' : ''}>daily_update</option>
+                        <option value="data_fetch" ${config.task_type === 'data_fetch' ? 'selected' : ''}>data_fetch</option>
+                        <option value="recommendation" ${config.task_type === 'recommendation' ? 'selected' : ''}>recommendation</option>
+                        <option value="health_check" ${config.task_type === 'health_check' ? 'selected' : ''}>health_check</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>执行间隔（秒）</label>
+                    <input type="number" id="task-interval" value="${config.interval_seconds || ''}" placeholder="例如: 3600 (1小时)" min="0">
+                </div>
+                
+                <div class="form-group">
+                    <label>Cron 表达式（可选，优先级高于间隔）</label>
+                    <input type="text" id="task-cron" value="${config.cron_expression || ''}" placeholder="例如: 0 2 * * * (每天凌晨2点)">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">格式: 分 时 日 月 周</p>
+                </div>
+                
+                <div class="form-group">
+                    <label>任务描述</label>
+                    <textarea id="task-description" placeholder="描述该任务的用途...">${config.description || ''}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>额外配置 (JSON)</label>
+                    <textarea id="task-config-json" placeholder='{"min_price": 0, "max_price": 100}'>${config.config_json ? JSON.stringify(config.config_json, null, 2) : ''}</textarea>
+                </div>
+                
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" onclick="closeModal()" class="btn btn-secondary">取消</button>
+                    <button type="submit" class="btn btn-primary">更新</button>
+                </div>
+            </form>
+        `;
+    }
+
+    // 更新任务配置
+    async function updateTaskConfig(event, taskName) {
+        event.preventDefault();
+        
+        const configData = {
+            task_type: document.getElementById('task-type').value,
+            interval_seconds: document.getElementById('task-interval').value ? parseInt(document.getElementById('task-interval').value) : null,
+            cron_expression: document.getElementById('task-cron').value || null,
+            description: document.getElementById('task-description').value,
+            config_json: document.getElementById('task-config-json').value ? JSON.parse(document.getElementById('task-config-json').value) : null
+        };
+        
+        try {
+            const response = await fetch(`${API_BASE}/task-configs/${taskName}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(configData)
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                closeModal();
+                await loadTaskConfigs();
+            } else {
+                alert('更新失败: ' + data.message);
+            }
+        } catch (error) {
+            console.error('更新任务配置失败:', error);
+            alert('更新失败: ' + error.message);
+        }
+    }
+
+    // 删除任务配置
+    async function deleteTaskConfig(taskName) {
+        if (!confirm(`确定要删除任务配置 "${taskName}" 吗？此操作不可恢复。`)) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE}/task-configs/${taskName}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                await loadTaskConfigs();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        } catch (error) {
+            console.error('删除任务配置失败:', error);
+            alert('删除失败: ' + error.message);
+        }
+    }
+
+    // 触发任务执行
+    async function triggerTask(taskName) {
+        try {
+            const response = await fetch(`${API_BASE}/task-configs/${taskName}/trigger`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                alert(`任务 "${taskName}" 已手动触发`);
+            } else {
+                alert('触发失败: ' + data.message);
+            }
+        } catch (error) {
+            console.error('触发任务失败:', error);
+            alert('触发失败: ' + error.message);
+        }
+    }
+</script>
+
+<!-- 需要在CSS中添加的样式 -->
+<style>
+    /* 开关样式 */
+    .toggle-switch {
+        position: relative;
+        width: 50px;
+        height: 26px;
+        display: inline-block;
+    }
+    
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--surface-light);
+        transition: var(--transition);
+        border-radius: 26px;
+    }
+    
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: var(--transition);
+        border-radius: 50%;
+    }
+    
+    input:checked + .toggle-slider {
+        background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+    }
+    
+    input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+    }
+    
+    /* 表单组样式 */
+    .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+    
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+        width: 100%;
+        padding: 10px 14px;
+        background: var(--background);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        border-radius: var(--radius);
+        font-size: 14px;
+        transition: var(--transition);
+    }
+    
+    .form-group textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+    
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+</style>
