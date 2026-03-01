@@ -1,18 +1,18 @@
 """
-定时任务调度器（增强版 - 支持交易日感知）
+定时任务调度器（支持数据库配置）
 """
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 import os
+import json
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import SessionLocal, SystemHealth, Recommendation, TaskLog, Stock, StockNews, TaskConfig
+from database import SessionLocal, SystemHealth, Recommendation, TaskLog, TaskConfig
 from models.market_collector_baostock import MarketCollector
 from models.news_collector import NewsCollector
 from models.recommender import StockRecommender
@@ -25,22 +25,22 @@ scheduler = AsyncIOScheduler()
 
 
 class JobScheduler:
-    """任务调度器"""
+    """任务调度器（支持数据库配置）"""
 
     def __init__(self):
         """初始化"""
-        self.market_collector = MarketCollector()  # baostock 版本不需要 token
+        self.market_collector = MarketCollector()
         self.news_collector = NewsCollector()
         self.recommender = StockRecommender()
-
-        # 导入交易日检查器
-        try:
-            from utils.trading_day_checker import get_trading_day_checker
-            self.trading_checker = get_trading_day_checker()
-            logger.info("✅ 交易日检查器已启用")
-        except ImportError:
-            logger.warning("⚠️ 交易日检查器未找到")
-            self.trading_checker = None
+        self.task_functions = {
+            'update_stock_list': self.update_stock_list_task,
+            'update_market_data': self.update_market_data_task,
+            'update_news': self.update_news_task,
+            'train_model': self.train_model_task,
+            'generate_recommendations': self.generate_recommendations_task,
+            'full_data_update': self.full_data_update,
+            'health_check': self.health_check_task
+        }
 
     def log_task(self, task_name, task_type, status, message=None, error=None, duration=0):
         """记录任务执行日志"""
@@ -59,22 +59,17 @@ class JobScheduler:
             )
             db.add(task_log)
             db.commit()
+
+            # 更新任务配置的最后执行时间
+            task_config = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+            if task_config:
+                task_config.last_run_time = datetime.now()
+                db.commit()
+
             db.close()
 
         except Exception as e:
             logger.error(f"记录任务日志失败: {e}")
-
-    def is_trading_day(self) -> bool:
-        """判断今天是否为交易日"""
-        if self.trading_checker is None:
-            return True
-        return self.trading_checker.is_trading_day()
-
-    def get_next_trading_day(self) -> datetime:
-        """获取下一个交易日"""
-        if self.trading_checker is None:
-            return datetime.now() + timedelta(days=1)
-        return self.trading_checker.get_next_trading_day()
 
     async def update_stock_list_task(self):
         """更新股票列表任务"""
@@ -141,13 +136,13 @@ class JobScheduler:
             logger.error(f"❌ 更新行情数据失败: {e}")
 
     async def update_news_task(self):
-        """更新新闻数据任务（每天执行）"""
+        """更新新闻数据任务"""
         task_start = datetime.now()
         try:
             logger.info("🔄 开始更新新闻数据...")
 
             db = SessionLocal()
-            self.news_collector.update_news(db_session=db, limit=50, source='all')
+            self.news_collector.update_news(db_session=db)
             db.close()
 
             duration = (datetime.now() - task_start).total_seconds()
@@ -173,15 +168,8 @@ class JobScheduler:
             logger.error(f"❌ 更新新闻数据失败: {e}")
 
     async def train_model_task(self):
-        """训练预测模型任务（仅交易日执行）"""
+        """训练预测模型任务"""
         task_start = datetime.now()
-
-        # 检查是否为交易日
-        if not self.is_trading_day():
-            next_trading = self.get_next_trading_day()
-            logger.info(f"⏭️  非交易日，跳过模型训练。下一个交易日: {next_trading.strftime('%Y-%m-%d')}")
-            return
-
         try:
             logger.info("🧠 开始训练预测模型...")
 
@@ -213,32 +201,20 @@ class JobScheduler:
             )
             logger.error(f"❌ 训练预测模型失败: {e}")
 
-    async def generate_recommendations_task(self, force: bool = False):
-        """
-        生成推荐任务（仅交易日执行）
-
-        Args:
-            force: 强制执行（忽略交易日检查）
-        """
+    async def generate_recommendations_task(self):
+        """生成推荐任务"""
         task_start = datetime.now()
-
-        # 检查是否为交易日
-        if not force and not self.is_trading_day():
-            next_trading = self.get_next_trading_day()
-            logger.info(f"⏭️  非交易日，跳过推荐生成。下一个交易日: {next_trading.strftime('%Y-%m-%d')}")
-            return
-
         try:
             logger.info("💡 开始生成推荐...")
 
             db = SessionLocal()
-            recs = self.recommender.generate_recommendations(top_n=10, db_session=db, force=force)
+            recs = self.recommender.generate_recommendations(top_n=10, db_session=db)
             db.close()
 
             duration = (datetime.now() - task_start).total_seconds()
             self.log_task(
                 "生成推荐",
-                "data_update",
+                "recommendation",
                 "success",
                 message=f"成功生成 {len(recs)} 个推荐",
                 duration=duration
@@ -249,7 +225,7 @@ class JobScheduler:
             duration = (datetime.now() - task_start).total_seconds()
             self.log_task(
                 "生成推荐",
-                "data_update",
+                "recommendation",
                 "failed",
                 message=f"生成失败",
                 error=str(e),
@@ -258,13 +234,7 @@ class JobScheduler:
             logger.error(f"❌ 生成推荐失败: {e}")
 
     async def full_data_update(self):
-        """完整数据更新任务（仅交易日执行）"""
-        # 检查是否为交易日
-        if not self.is_trading_day():
-            next_trading = self.get_next_trading_day()
-            logger.info(f"⏭️  非交易日，跳过完整数据更新。下一个交易日: {next_trading.strftime('%Y-%m-%d')}")
-            return
-
+        """完整数据更新任务"""
         logger.info("🔄 开始完整数据更新...")
 
         # 按顺序执行
@@ -302,6 +272,7 @@ class JobScheduler:
         logger.info("🏥 执行健康检查...")
         try:
             from sqlalchemy import func
+            from datetime import timedelta
 
             db = SessionLocal()
 
@@ -328,11 +299,10 @@ class JobScheduler:
                 status = "warning"
                 error_message = "没有历史健康检查记录"
 
-            # 如果是交易日但无推荐，标记为警告
-            if self.is_trading_day() and today_recs == 0:
+            if today_recs == 0:
                 status = "warning"
                 if not error_message:
-                    error_message = "今日(交易日)未生成推荐"
+                    error_message = "今日未生成推荐"
 
             # 记录健康检查
             health = SystemHealth(
@@ -346,75 +316,134 @@ class JobScheduler:
             db.commit()
             db.close()
 
-            trading_day_status = "交易日" if self.is_trading_day() else "非交易日"
-            logger.info(f"✅ 健康检查完成: 状态={status}, {trading_day_status}, 今日推荐={today_recs}条")
+            logger.info(f"✅ 健康检查完成: 状态={status}, 今日推荐={today_recs}条")
 
         except Exception as e:
             logger.error(f"❌ 健康检查失败: {e}")
 
-    def schedule_next_trading_day_job(self):
-        """调度下一个交易日的任务"""
-        next_trading = self.get_next_trading_day()
+    def ensure_default_task_configs(self):
+        """确保存在默认的任务配置"""
+        db = SessionLocal()
 
-        # 添加下一个交易日的推荐任务
-        scheduler.add_job(
-            self.generate_recommendations_task,
-            trigger=DateTrigger(run_date=next_trading.replace(hour=9, minute=30)),
-            id=f'next_trading_recommend_{next_trading.strftime("%Y%m%d")}',
-            name=f'下一个交易日推荐 ({next_trading.strftime("%Y-%m-%d")})',
-            replace_existing=True
-        )
+        default_configs = [
+            {
+                'task_name': 'health_check',
+                'task_type': 'health_check',
+                'is_enabled': True,
+                'interval_seconds': 1200,  # 20分钟
+                'description': '系统健康检查'
+            },
+            {
+                'task_name': 'update_news',
+                'task_type': 'data_fetch',
+                'is_enabled': True,
+                'interval_seconds': 3600,  # 1小时
+                'description': '更新新闻数据'
+            },
+            {
+                'task_name': 'full_data_update',
+                'task_type': 'daily_update',
+                'is_enabled': True,
+                'cron_expression': '0 2 * * *',  # 每天凌晨2点
+                'description': '完整数据更新（每日）'
+            }
+        ]
 
-        logger.info(f"✅ 已调度下一个交易日 ({next_trading.strftime('%Y-%m-%d')}) 的推荐任务 (09:30)")
+        for config in default_configs:
+            existing = db.query(TaskConfig).filter(TaskConfig.task_name == config['task_name']).first()
+            if not existing:
+                task_config = TaskConfig(**config)
+                db.add(task_config)
+                logger.info(f"✅ 创建默认任务配置: {config['task_name']}")
+
+        db.commit()
+        db.close()
+
+    def load_and_schedule_tasks(self):
+        """从数据库加载任务配置并调度"""
+        db = SessionLocal()
+
+        # 清除所有现有任务
+        scheduler.remove_all_jobs()
+
+        # 加载启用的任务配置
+        task_configs = db.query(TaskConfig).filter(TaskConfig.is_enabled == True).all()
+
+        for config in task_configs:
+            try:
+                # 根据任务名称查找对应的执行函数
+                task_func = self.task_functions.get(config.task_name)
+
+                if not task_func:
+                    logger.warning(f"⚠️  未找到任务函数: {config.task_name}")
+                    continue
+
+                # 根据配置创建触发器
+                trigger = None
+                if config.cron_expression:
+                    # 使用 Cron 表达式
+                    parts = config.cron_expression.split()
+                    if len(parts) >= 5:
+                        minute, hour, day, month, day_of_week = parts[:5]
+                        trigger = CronTrigger(
+                            minute=minute,
+                            hour=hour,
+                            day=day,
+                            month=month,
+                            day_of_week=day_of_week,
+                            timezone='Asia/Shanghai'
+                        )
+                        logger.info(f"  - {config.task_name}: Cron({config.cron_expression})")
+                elif config.interval_seconds:
+                    # 使用间隔
+                    trigger = IntervalTrigger(
+                        seconds=config.interval_seconds,
+                        timezone='Asia/Shanghai'
+                    )
+                    logger.info(f"  - {config.task_name}: 每{config.interval_seconds}秒")
+                else:
+                    logger.warning(f"⚠️  任务 {config.task_name} 没有配置触发器")
+                    continue
+
+                # 添加任务
+                scheduler.add_job(
+                    task_func,
+                    trigger=trigger,
+                    id=config.task_name,
+                    name=config.description or config.task_name,
+                    replace_existing=True
+                )
+
+            except Exception as e:
+                logger.error(f"❌ 加载任务 {config.task_name} 失败: {e}")
+
+        db.close()
 
     def start(self):
         """启动调度器"""
         logger.info("🚀 启动定时任务调度器...")
 
-        # 每20分钟健康检查
-        scheduler.add_job(
-            self.health_check_task,
-            trigger=IntervalTrigger(minutes=20, timezone='UTC'),
-            id='health_check',
-            name='健康检查',
-            replace_existing=True
-        )
+        # 确保存在默认任务配置
+        self.ensure_default_task_configs()
 
-        # 每天早上9:30检查是否为交易日，如果是则执行完整更新
-        scheduler.add_job(
-            self.full_data_update,
-            trigger=CronTrigger(hour=9, minute=30, timezone='Asia/Shanghai'),
-            id='daily_trading_update',
-            name='每日交易日数据更新 (09:30)',
-            replace_existing=True
-        )
-
-        # 每天凌晨2点更新新闻（不需要交易日限制）
-        scheduler.add_job(
-            self.update_news_task,
-            trigger=CronTrigger(hour=2, minute=0, timezone='Asia/Shanghai'),
-            id='daily_news_update',
-            name='每日新闻更新 (02:00)',
-            replace_existing=True
-        )
+        # 从数据库加载任务配置
+        self.load_and_schedule_tasks()
 
         # 启动调度器
         scheduler.start()
-
-        logger.info("⏰ 定时任务已启动:")
-        logger.info("   - 健康检查: 每20分钟")
-        logger.info("   - 每日交易日数据更新: 每天 09:30 (仅交易日)")
-        logger.info("   - 每日新闻更新: 每天 02:00")
-
-        # 显示下一个交易日
-        next_trading = self.get_next_trading_day()
-        logger.info(f"   - 下一个交易日: {next_trading.strftime('%Y-%m-%d')}")
+        logger.info("✅ 定时任务调度器已启动")
 
     def stop(self):
         """停止调度器"""
         logger.info("⏹ 停止调度器...")
         scheduler.shutdown()
         logger.info("✅ 调度器已停止")
+
+    def reload_tasks(self):
+        """重新加载任务配置（热更新）"""
+        logger.info("🔄 重新加载任务配置...")
+        self.load_and_schedule_tasks()
+        logger.info("✅ 任务配置已重新加载")
 
 
 if __name__ == "__main__":

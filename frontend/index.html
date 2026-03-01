@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股智能推荐系统 - 管理后台</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            /* 核心配色 - 基于设计系统优化 */
+            --primary: #3B82F6;
+            --primary-dark: #1E40AF;
+            --primary-light: #60A5FA;
+            --secondary: #F59E0B;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --error: #EF4444;
+            --background: #0F172A;
+            --surface: #1E293B;
+            --surface-light: #334155;
+            --text-primary: #F1F5F9;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            --border: rgba(59, 130, 246, 0.2);
+            
+            /* 阴影系统 */
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.3);
+            
+            /* 圆角系统 */
+            --radius-sm: 4px;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            
+            /* 过渡 */
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--background);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* 侧边栏 */
+        .sidebar {
+            width: 260px;
+            background: linear-gradient(180deg, var(--surface) 0%, var(--background) 100%);
+            color: var(--text-primary);
+            padding: 24px 0;
+            box-shadow: var(--shadow-lg);
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+        
+        .sidebar-header {
+            padding: 0 24px 24px;
+            border-bottom:1px solid var(--border);
+        }
+        
+        .sidebar-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--primary-light), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        
+        .sidebar-header .version {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .menu-item {
+            padding: 14px 24px;
+            cursor: pointer;
+            transition: var(--transition);
+            border-left: 3px solid transparent;
+            font-size: 14px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+        
+        .menu-item::before {
+            content: '';
+            position: absolute;
+            left: 24px;
+            right: 24px;
+            bottom: 0;
+            height: 1px;
+            background: var(--border);
+            opacity: 0.5;
+        }
+        
+        .menu-item:last-child::before {
+            display: none;
+        }
+        
+        .menu-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--text-primary);
+            border-left-color: var(--primary);
+        }
+        
+        .menu-item.active {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.2), transparent);
+            color: var(--text-primary);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+        
+        /* 主内容区 */
+        .content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .content-header {
+            margin-bottom: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .content-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        /* 卡片 */
+        .card {
+            background: var(--surface);
+            backdrop-filter: blur(10px);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-glow);
+            transform: translateY(-2px);
+        }
+        
+        .card h3 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: 600;
+            padding-bottom: 12px;
+            border-bottom: 2px solid;
+            border-image: linear-gradient(90deg, var(--primary), var(--primary-light)) 1;
+        }
+        
+        /* 统计卡片 */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-box {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(245, 158, 11, 0.1));
+            padding: 24px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+        
+        .stat-box:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-glow);
+        }
+        
+        .stat-box .number {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+        }
+        
+        .stat-box .label {
+            color: var(--text-secondary);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* 表格 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            background: var(--background);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        
+        .data-table th {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(59, 130, 246, 0.1);
+        }
+        
+        .data-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+        
+        .data-table tr:hover {
+            background: rgba(59, 130, 246, 0.08);
+        }
+        
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* 状态徽章 */
+        .status-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-block;
+        }
+        
+        .status-success {
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: #fff;
+        }
+        
+        .status-warning {
+            background: linear-gradient(135deg, #F59E0B, #D97706);
+            color: #fff;
+        }
+        
+        .status-error {
+            background: linear-gradient(135deg, #EF4444, #DC2626);
+            color: #fff;
+        }
+
+        /* 开关 */
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            display: inline-block;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--surface-light);
+            transition: var(--transition);
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: var(--transition);
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        /* 表单组 */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--background);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: var(--radius);
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        /* 按钮 */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+        
+        .btn-secondary {
+            background: var(--surface-light);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--primary);
+        }
+        
+        /* 分页 */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 24px;
+            padding: 16px;
+        }
+        
+        .pagination button {
+            padding: 8px 16px;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid var(--border);
+            color: var(--primary);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: var(--transition);
+            font-size: 13px;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: rgba(59, 130, 246, 0.4);
+            transform: translateY(-1px);
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination button.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border-color: transparent;
+        }
+        
+        .pagination .page-info {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin: 0 12px;
+        }
+        
+        /* 模态框 */
+        #modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        #modal-content {
+            background: var(--surface);
+            padding: 28px;
+            border-radius: var(--radius-xl);
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+        }
+        
+        /* 输入框 */
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
+            padding: 10px 14px;
+            background: var(--background);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: var(--radius);
+            font-size: 14px;
+            transition: var(--transition);
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        
+        /* 链接 */
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+        
+        a:hover {
+            color: var(--primary-light);
+        }
+        
+        /* 图表容器 */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        
+        /* 滚动条 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--background);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--primary), var(--primary-dark));
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, var(--primary-dark), var(--primary));
+        }
+        
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: 100vh;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 60px;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                padding: 0;
+                box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+                z-index: 1000;
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+                background: var(--surface);
+            }
+            
+            .sidebar-header {
+                display: none;
+            }
+            
+            .menu-item {
+                padding: 8px;
+                flex: 1;
+                text-align: center;
+                border-bottom: 3px solid transparent;
+                font-size: 10px;
+                color: var(--text-secondary);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+            }
+            
+            .menu-item::before {
+                display: none;
+            }
+            
+            .content {
+                flex: 1;
+                padding: 16px;
+                padding-bottom: 80px;
+                min-height: calc(100vh - 60px);
+            }
+            
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+            
+            .stat-box .number {
+                font-size: 28px;
+            }
+            
+            .stat-box .label {
+                font-size: 11px;
+            }
+            
+            .card {
+                padding: 16px;
+            }
+            
+            .content-header h1 {
+                font-size: 22px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stats {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            
+            .data-table th,
+            .data-table td {
+                padding: 10px 8px;
+                font-size: 12px;
+            }
+        }
+        
+        /* 加载动画 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            gap: 8px;
+        }
+        
+        .loading-dot {
+            width: 10px;
+            height: 10px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: loading 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+        .loading-dot:nth-child(3) { animation-delay: 0; }
+        
+        @keyframes loading {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>📊 股票推荐系统</h2>
+                <div class="version">v2.1.0</div>
+            </div>
+            <div class="menu-item active" onclick="showPage('dashboard', this)">🏠 仪表盘</div>
+            <div class="menu-item" onclick="showPage('recommendations', this)">💡 每日推荐</div>
+            <div class="menu-item" onclick="showPage('stocks', this)">📈 股票列表</div>
+            <div class="menu-item" onclick="showPage('news', this)">📰 新闻数据</div>
+            <div class="menu-item" onclick="showPage('tasks', this)">⏰ 任务日志</div>
+            <div class="menu-item" onclick="showPage('task-configs', this)">⚙️ 任务配置</div>
+            <div class="menu-item" onclick="showPage('settings', this)">🔧 系统设置</div>
+        </div>
+        <div class="content" id="main-content">
+            <div class="loading">
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+            </div>
+        </div>
+        
+        <!-- 模态框 -->
+        <div id="modal-overlay">
+            <div id="modal-content"></div>
+        </div>
+    </div>
+    <script>
+        const API_BASE = '/api';
+        let stocksPage = 1;
+        let stocksPageSize = 10;
+        let recommendationsPage = 1;
+        let recommendationsPageSize = 10;
+        let newsPage = 1;
+        let newsPageSize = 20;
+        let tasksPage = 1;
+        let tasksPageSize = 10;
+        let recommendationDate = new Date().toISOString().split('T')[0];
+        let currentChart = null;
+        let currentPage = 'dashboard';
+
+        async function showPage(page, target) {
+            currentPage = page;
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            if (target) {
+                target.classList.add('active');
+            }
+
+            switch(page) {
+                case 'dashboard': await loadDashboard(); break;
+                case 'recommendations': await loadRecommendations(); break;
+                case 'stocks': await loadStocks(); break;
+                case 'news': await loadNews(); break;
+                case 'tasks': await loadTasks(); break;
+                case 'task-configs': await loadTaskConfigs(); break;
+                case 'settings': await loadSettings(); break;
+            }
+        }
+
+        async function loadDashboard() {
+            try {
+                const [statusRes, recRes, taskRes] = await Promise.all([
+                    fetch(`${API_BASE}/system/status`),
+                    fetch(`${API_BASE}/recommendations/today`),
+                    fetch(`${API_BASE}/tasks/recent?page=1&page_size=10`)
+                ]);
+
+                const status = await statusRes.json();
+                const rec = await recRes.json();
+                const task = await taskRes.json();
+
+                const lastTasks = task.logs?.slice(0, 3).map(log => `
+                    <div style="margin-bottom: 12px; padding: 12px; background: var(--background); border-radius: var(--radius); border-left: 3px solid ${log.status === 'success' ? 'var(--success)' : 'var(--error)'};">
+                        <div style="font-size: 14px; font-weight: 500; margin-bottom: 6px;">${log.task_name}</div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <span class="status-badge ${log.status === 'success' ? 'status-success' : 'status-error'}">${log.status}</span>
+                            <span style="font-size: 12px; color: var(--text-muted);">${new Date(log.start_time).toLocaleString('zh-CN')}</span>
+                        </div>
+                    </div>
+                `).join('') || '<p>暂无任务记录</p>';
+
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>📊 系统概览</h1>
+                    </div>
+                    
+                    <div class="stats">
+                        <div class="stat-box">
+                            <div class="number">${rec.total || 0}</div>
+                            <div class="label">今日推荐</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="number">${task.total || 0}</div>
+                            <div class="label">总任务数</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="number" style="color: var(--success);">${task.success || 0}</div>
+                            <div class="label">成功任务</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="number" style="color: var(--error);">${task.failed || 0}</div>
+                            <div class="label">失败任务</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>⏰ 最近任务</h3>
+                        ${lastTasks}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载仪表盘失败:', error);
+            }
+        }
+
+        async function loadRecommendations() {
+            try {
+                const response = await fetch(`${API_BASE}/recommendations/today?date=${recommendationDate}&page=${recommendationsPage}&page_size=${recommendationsPageSize}`);
+                const data = await response.json();
+
+                const html = data.recommendations?.map((rec, i) => `
+                    <tr>
+                        <td>${(data.page - 1) * data.page_size + i + 1}</td>
+                        <td><strong>${rec.name}</strong> <span style="color: var(--text-muted);">(${rec.ts_code})</span></td>
+                        <td style="color: ${rec.predicted_return > 0 ? 'var(--success)' : 'var(--error)'}; font-weight: 600;">${rec.predicted_return.toFixed(2)}%</td>
+                        <td>¥${rec.current_price?.toFixed(2) || 'N/A'}</td>
+                        <td>${new Date(rec.created_at || recommendationDate).toLocaleString('zh-CN').split(' ')[0]}</td>
+                        <td>${rec.reasons?.join('<br>') || '无'}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="6">暂无推荐数据</td></tr>';
+
+                let paginationHtml = '';
+                if (data.total_pages > 1) {
+                    const pageButtons = [];
+                    pageButtons.push(`<button ${data.page <= 1 ? 'disabled' : ''} onclick="changeRecommendationsPage(${data.page - 1})">上一页</button>`);
+                    
+                    let startPage = Math.max(1, data.page - 2);
+                    let endPage = Math.min(data.total_pages, startPage + 4);
+                    if (endPage - startPage < 4) {
+                        startPage = Math.max(1, endPage - 4);
+                    }
+                    
+                    for (let i = startPage; i <= endPage; i++) {
+                        pageButtons.push(`<button class="${i === data.page ? 'active' : ''}" onclick="changeRecommendationsPage(${i})">${i}</button>`);
+                    }
+                    
+                    pageButtons.push(`<button ${data.page >= data.total_pages ? 'disabled' : ''} onclick="changeRecommendationsPage(${data.page + 1})">下一页</button>`);
+                    
+                    paginationHtml = `
+                        <div class="pagination">
+                            ${pageButtons.join('')}
+                            <span class="page-info">${data.page} / ${data.total_pages} 页，共 ${data.total} 条</span>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>💡 每日推荐</h1>
+                    </div>
+                    
+                    <div class="card">
+                        <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <label style="font-size: 14px; color: var(--text-primary);">选择日期：</label>
+                            <input type="date" id="recommendation-date-input" value="${recommendationDate}" 
+                                onchange="updateRecommendationDate(this.value)">
+                            <button class="btn btn-primary" onclick="reloadRecommendations()">查询</button>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>排名</th><th>股票名称</th><th>预期收益</th><th>当前价格</th><th>推荐日期</th><th>推荐理由</th></tr>
+                            </thead>
+                            <tbody>${html}</tbody>
+                        </table>
+                        ${paginationHtml}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载推荐失败:', error);
+            }
+        }
+
+        function updateRecommendationDate(date) {
+            recommendationDate = date;
+        }
+
+        function reloadRecommendations() {
+            recommendationsPage = 1;
+            loadRecommendations();
+        }
+
+        function changeRecommendationsPage(page) {
+            recommendationsPage = page;
+            loadRecommendations();
+        }
+
+        async function loadStocks() {
+            try {
+                const response = await fetch(`${API_BASE}/stocks?page=${stocksPage}&page_size=${stocksPageSize}`);
+                const data = await response.json();
+
+                const html = data.stocks?.map(stock => `
+                    <tr>
+                        <td><strong>${stock.name}</strong> <span style="color: var(--text-muted);">(${stock.ts_code})</span></td>
+                        <td>${stock.industry || 'N/A'}</td>
+                        <td>${stock.market || 'N/A'}</td>
+                        <td><a href="#" onclick="loadStockDetail('${stock.ts_code}'); return false;" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">查看详情</a></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="4">暂无股票数据</td></tr>';
+
+                let paginationHtml = '';
+                if (data.total_pages > 1) {
+                    const pageButtons = [];
+                    pageButtons.push(`<button ${data.page <= 1 ? 'disabled' : ''} onclick="changeStocksPage(${data.page - 1})">上一页</button>`);
+                    
+                    let startPage = Math.max(1, data.page - 2);
+                    let endPage = Math.min(data.total_pages, startPage + 4);
+                    if (endPage - startPage < 4) {
+                        startPage = Math.max(1, endPage - 4);
+                    }
+                    
+                    for (let i = startPage; i <= endPage; i++) {
+                        pageButtons.push(`<button class="${i === data.page ? 'active' : ''}" onclick="changeStocksPage(${i})">${i}</button>`);
+                    }
+                    
+                    pageButtons.push(`<button ${data.page >= data.total_pages ? 'disabled' : ''} onclick="changeStocksPage(${data.page + 1})">下一页</button>`);
+                    
+                    paginationHtml = `
+                        <div class="pagination">
+                            ${pageButtons.join('')}
+                            <span class="page-info">${data.page} / ${data.total_pages} 页，共 ${data.total} 条</</span>
+                        </div>
+                    `;
+                }
+
+            document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>📈 股票列表</h1>
+                    </div>
+                    
+                    <div class="card">
+                        <div style="margin-bottom: 16px;">
+                            <span style="color: var(--text-secondary);">共有 <strong style="color: var(--text-primary);">${data.total}</strong> 只股票</span>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>股票名称</th><th>行业</th><th>市场</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>${html}</tbody>
+                        </table>
+                        ${paginationHtml}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载股票列表失败:', error);
+            }
+        }
+
+        function changeStocksPage(page) {
+            stocksPage = page;
+            loadStocks();
+        }
+
+        async function loadStockDetail(ts_code) {
+            try {
+                const response = await fetch(`${API_BASE}/stocks/${ts_code}`);
+                const data = await response.json();
+
+                const pricesHtml = data.prices?.slice(0, 20).map(p => `
+                    <tr>
+                        <td>${p.trade_date}</td>
+                        <td>¥${p.open?.toFixed(2) || 'N/A'}</td>
+                        <td>¥${p.high?.toFixed(2) || 'N/A'}</td>
+                        <td>¥${p.low?.toFixed(2) || 'N/A'}</td>
+                        <td>¥${p.close?.toFixed(2) || 'N/A'}</td>
+                        <td style="color: ${p.pct_chg > 0 ? 'var(--success)' : p.pct_chg < 0 ? 'var(--error)' : 'var(--text-muted)'};">${p.pct_chg?.toFixed(2) || 0}%</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="6">暂无价格数据</td></tr>';
+
+                const newsHtml = data.news?.map(n => `
+                    <div style="margin-bottom: 16px; padding: 14px; background: var(--background); border-radius: var(--radius); border-left: 3px solid var(--primary);">
+                        <h4 style="margin-bottom: 8px; font-size: 15px;">${n.title}</h4>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">${new Date(n.pub_date).toLocaleString('zh-CN')} | 情感: ${n.sentiment?.toFixed(2) || 'N/A'}</p>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">${n.content || '无内容'}</p>
+                        ${n.url ? `<a href="${n.url}" target="_blank" style="font-size: 13px;">阅读原文 →</a>` : ''}
+                    </div>
+                `).join('') || '<p>暂无新闻数据</p>';
+
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>📊 ${data.stock.name} (${data.stock.ts_code})</h1>
+                    </div>
+                    
+                    <div class="card">
+                        <div style="margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
+                            <span><strong style="color: var(--text-primary);">行业:</strong> <span style="color: var(--text-secondary);">${data.stock.industry || 'N/A'}</span></span>
+                            <span><strong style="color: var(--text-primary);">市场:</strong> <span style="color: var(--text-secondary);">${data.stock.market || 'N/A'}</span></span>
+                        </div>
+                        
+                        <div style="margin-bottom: 24px;">
+                            <h3 style="color: var(--primary); margin-bottom: 12px; font-size: 16px; font-weight: 600;">💰 近20日价格走势</h3>
+                            <div class="chart-container">
+                                <canvas id="priceChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <table style="margin-bottom: 24px; width: 100%;">
+                            <thead>
+                                <tr style="background: rgba(59, 130, 246, 0.1);"><th style="padding: 10px; color: var(--primary); font-size: 12px; text-transform: uppercase;">日期</th><th style="padding: 10px; color: var(--primary); font-size: 12px; text-transform: uppercase;">开盘</th><th style="padding: 10px; color: var(--primary); font-size: 12px; text-transform: uppercase;">最高</th><th style="padding: 10px; color: var(--primary); font-size: 12px; text-transform: uppercase;">最低</th><th style="padding: 10px; color: var(--primary); font-size: 12px; text-transform: uppercase;">收盘</th><th style="padding: 10px; color: var(--primary); font-size: 12px; text-transform: uppercase;">涨跌幅</th></tr>
+                            </thead>
+                            <tbody>${pricesHtml}</tbody>
+                        </table>
+                        
+                        <div>
+                            <h3 style="color: var(--primary); margin-bottom: 12px; font-size: 16px; font-weight: 600;">📰 相关新闻</h3>
+                            ${newsHtml}
+                        </div>
+                        
+                        <div style="margin-top: 24px;">
+                            <a href="#" onclick="loadStocks(); return false;" class="btn btn-secondary">← 返回列表</a>
+                        </div>
+                    </div>
+                `;
+
+                // 绘制价格图表
+                if (data.prices && data.prices.length > 0) {
+                    const ctx = document.getElementById('priceChart').getContext('2d');
+                    const prices = data.prices.slice().reverse();
+                    
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: prices.map(p => p.trade_date),
+                            datasets: [{
+                                label: '收盘价',
+                                data: prices.map(p => p.close),
+                                borderColor: '#3B82F6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 3,
+                                pointHoverRadius: 5
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    grid: {
+                                        color: 'rgba(59, 130, 246, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#94A3B8'
+                                    }
+                                },
+                                x: {
+                                    grid: {
+                                        color: 'rgba(59, 130, 246, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#94A3B8',
+                                        maxTicksLimit: 10
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('加载股票详情失败:', error);
+            }
+        }
+
+        async function loadNews() {
+            try {
+                const response = await fetch(`${API_BASE}/news?page=${newsPage}&page_size=${newsPageSize}`);
+                const data = await response.json();
+
+                const newsList = Array.isArray(data.data) ? data.data : [];
+                const html = newsList.map(news => `
+                    <div class="card" style="margin-bottom: 16px;">
+                        <h3 style="margin-bottom: 12px;">${news.title}</h3>
+                        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">${new Date(news.pub_date).toLocaleString('zh-CN')} | ${news.sentiment_label || 'N/A'}</p>
+                        <p style="color: var(--text-secondary);">${news.content || news.url || '无内容'}</p>
+                    </div>
+                `).join('') || '<p>暂无新闻数据</p>';
+
+                // 分页 HTML
+                let paginationHtml = '';
+                const totalPages = data.total_pages || 1;
+                const newsCurrentPage = data.page || 1;
+                const totalNewsItems = data.total || 0;
+
+                if (totalPages > 1) {
+                    const pageButtons = [];
+                    pageButtons.push(`<button ${newsCurrentPage <= 1 ? 'disabled' : ''} onclick="changeNewsPage(${newsCurrentPage - 1})">上一页</button>`);
+
+                    let startPage = Math.max(1, newsCurrentPage - 2);
+                    let endPage = Math.min(totalPages, startPage + 4);
+                    if (endPage - startPage < 4) {
+                        startPage = Math.max(1, endPage - 4);
+                    }
+
+                    for (let i = startPage; i <= endPage; i++) {
+                        pageButtons.push(`<button class="${i === newsCurrentPage ? 'active' : ''}" onclick="changeNewsPage(${i})">${i}</button>`);
+                    }
+
+                    pageButtons.push(`<button ${newsCurrentPage >= totalPages ? 'disabled' : ''} onclick="changeNewsPage(${newsCurrentPage + 1})">下一页</button>`);
+
+                    paginationHtml = `
+                        <div class="pagination">
+                            ${pageButtons.join('')}
+                            <span class="page-info">${newsCurrentPage} / ${totalPages} 页，共 ${totalNewsItems} 条</span>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>📰 新闻数据</h1>
+                    </div>
+                    
+                    ${html}
+                    ${paginationHtml}
+                `;
+            } catch (error) {
+                console.error('加载新闻失败:', error);
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>📰 新闻数据</h1>
+                    </div>
+                    <div class="card" style="color: var(--error);">
+                        <p>❌ 加载新闻失败: ${error.message || '未知错误'}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function changeNewsPage(page) {
+            newsPage = page;
+            loadNews();
+        }
+
+        async function loadTasks() {
+            try {
+                const response = await fetch(`${API_BASE}/tasks/recent?page=${tasksPage}&page_size=${tasksPageSize}`);
+                const data = await response.json();
+
+                window.currentTaskLogs = data.logs;
+
+                const html = data.logs?.map((log, index) => `
+                    <tr>
+                        <td>${new Date(log.start_time).toLocaleString('zh-CN')}</td>
+                        <td><strong>${log.task_name}</strong></td>
+                        <td><span class="status-badge ${log.status === 'success' ? 'status-success' : 'status-error'}">${log.status}</span></td>
+                        <td style="max-width: 200px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis;">${log.error ? (log.error.length > 50 ? log.error.substring(0, 50) + '...' : log.error) : '-'}</td>
+                        <td><button onclick="showTaskDetail(${index})" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">查看</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="5">暂无任务日志</td></tr>';
+
+                let paginationHtml = '';
+                if (data.total_pages > 1) {
+                    const pageButtons = [];
+                    pageButtons.push(`<button ${data.page <= 1 ? 'disabled' : ''} onclick="changeTasksPage(${data.page - 1})">上一页</button>`);
+                    
+                    let startPage = Math.max(1, data.page - 2);
+                    let endPage = Math.min(data.total_pages, startPage + 4);
+                    if (endPage - startPage < 4) {
+                        startPage = Math.max(1, endPage - 4);
+                    }
+                    
+                    for (let i = startPage; i <= endPage; i++) {
+                        pageButtons.push(`<button class="${i === data.page ? 'active' : ''}" onclick="changeTasksPage(${i})">${i}</button>`);
+                    }
+                    
+                    pageButtons.push(`<button ${data.page >= data.total_pages ? 'disabled' : ''} onclick="changeTasksPage(${data.page + 1})">下一页</button>`);
+                    
+                    paginationHtml = `
+                        <div class="pagination">
+                            ${pageButtons.join('')}
+                            <span class="page-info">${data.page} / ${data.total_pages} 页，共 ${data.total} 条</span>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>⏰ 任务日志</h1>
+                    </div>
+                    
+                    <div class="card">
+                        <div style="margin-bottom: 16px;">
+                            <span>总任务数: <strong style="color: var(--text-primary);">${data.total || 0}</strong></span> |
+                            <span style="color: var(--success);">成功: ${data.success || 0}</span> |
+                            <span style="color: var(--error);">失败: ${data.failed || 0}</span>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>时间</th><th>任务名称</th><th>状态</th><th>错误信息</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>${html}</tbody>
+                        </table>
+                        ${paginationHtml}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载任务日志失败:', error);
+            }
+        }
+
+        function changeTasksPage(page) {
+            tasksPage = page;
+            loadTasks();
+        }
+
+        function showTaskDetail(index) {
+            const log = window.currentTaskLogs[index];
+            
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-content').innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                    <h3 style="margin: 0; font-size: 18px;">任务详情</h3>
+                    <button onclick="closeModal()" style="background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+                
+                <div style="display: grid; gap: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">任务名称</label>
+                        <div style="font-size: 14px; font-weight: 500;">${log.task_name}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">任务类型</label>
+                        <div style="font-size: 14px;">${log.task_type}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">执行时间</label>
+                        <div style="font-size: 14px;">${new Date(log.start_time).toLocaleString('zh-CN')}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">状态</label>
+                        <span class="status-badge ${log.status === 'success' ? 'status-success' : 'status-error'}">${log.status}</span>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">执行时长</label>
+                        <div style="font-size: 14px;">${log.duration_seconds ? log.duration_seconds.toFixed(2) + ' 秒' : '-'}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">执行消息</label>
+                        <div style="font-size: 14px; word-wrap: break-word;">${log.message || '-'}</div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-secondary);">错误信息</label>
+                        <div style="font-size: 14px; word-wrap: break-word; white-space: pre-wrap; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: var(--radius); max-height: 200px; overflow-y: auto;">${log.error || '-'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        async function loadSettings() {
+            document.getElementById('main-content').innerHTML = `
+                <div class="content-header">
+                    <h1>⚙️ 系统设置</h1>
+                </div>
+                
+                <div class="card">
+                    <h3>💡 自定义价格范围生成推荐</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 16px;">根据你设定的股价范围生成新的推荐</p>
+                    <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-primary);">最低价格 (元)</label>
+                            <input type="number" id="min-price" value="0" min="0" step="0.01">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-primary);">最高价格 (元)</label>
+                            <input type="number" id="max-price" value="15" min="0" step="0.01">
+                        </div>
+                        <button class="btn btn-primary" onclick="generateCustomRecommendations()">
+                            生成推荐
+                        </button>
+                    </div>
+                    <div id="generate-result" style="margin-top: 10px;"></div>
+                </div>
+
+                <div class="card">
+                    <h3>📊 数据源配置</h3>
+                    <p style="color: var(--text-secondary);">当前使用 baostock 接口获取股票数据（免费、无需 Token）</p>
+                </div>
+                
+                <div class="card">
+                    <h3>💾 数据库</h3>
+                    <p style="color: var(--text-secondary);">MySQL 本地数据库</p>
+                </div>
+                
+                <div class="card">
+                    <h3>⏰ 任务调度</h3>
+                    <p style="color: var(--text-secondary);">定时任务更新数据并生成推荐（每日凌晨执行）</p>
+                </div>
+            `;
+        }
+
+        async function generateCustomRecommendations() {
+            const minPrice = document.getElementById('min-price').value;
+            const maxPrice = document.getElementById('max-price').value;
+            const resultDiv = document.getElementById('generate-result');
+
+            if (parseFloat(minPrice) >= parseFloat(maxPrice)) {
+                resultDiv.innerHTML = '<span style="color: var(--error);">Error: 最低价格必须小于最高价格</span>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<span style="color: var(--primary);">生成中...</span>';
+
+            try {
+                const response = await fetch(`${API_BASE}/recommendations/generate?minPrice=${minPrice}&maxPrice=${maxPrice}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = '<span style="color: var(--success);">成功: ' + data.message + ' (价格: ¥' + minPrice + '-' + maxPrice + ')</span>';
+                    setTimeout(() => {
+                        showPage('recommendations', document.querySelector('.menu-item:nth-child(3)'));
+                    }, 2000);
+                } else {
+                    resultDiv.innerHTML = '<span style="color: var(--error);">失败: ' + data.message + '</span>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span style="color: var(--error);">Error: ' + error.message + '</span>';
+            }
+        }
+
+        // ==================== 任务配置管理 ====================
+
+        let taskConfigs = [];
+
+        async function loadTaskConfigs() {
+            try {
+                const response = await fetch(`${API_BASE}/task-configs`);
+                const data = await response.json();
+
+                taskConfigs = data.configs || [];
+
+                const html = taskConfigs.map(config => {
+                    const triggerDisplay = config.cron_expression
+                        ? `Cron: ${config.cron_expression}`
+                        : `间隔: ${config.interval_seconds ? config.interval_seconds + '秒' : '未设置'}`;
+
+                    return `
+                        <tr>
+                            <td><strong>${config.task_name}</strong></td>
+                            <td>${config.task_type || 'N/A'}</td>
+                            <td>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" ${config.is_enabled ? 'checked' : ''} onchange="toggleTask('${config.task_name}')">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </td>
+                            <td>${triggerDisplay}</td>
+                            <td>${config.last_run_time ? new Date(config.last_run_time).toLocaleString('zh-CN') : '未运行'}</td>
+                            <td>${config.description || '无描述'}</td>
+                            <td>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="showEditTaskConfig('${config.task_name}')" class="btn btn-secondary btn-sm">编辑</button>
+                                    <button onclick="triggerTask('${config.task_name}')" class="btn btn-primary btn-sm">触发</button>
+                                    <button onclick="deleteTaskConfig('${config.task_name}')" class="btn btn-danger btn-sm">删除</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('') || '<tr><td colspan="7">暂无任务配置</td></tr>';
+
+                document.getElementById('main-content').innerHTML = `
+                    <div class="content-header">
+                        <h1>⚙️ 任务配置管理</h1>
+                        <button class="btn btn-primary" onclick="showCreateTaskConfig()">
+                            <span>+ 新建任务</span>
+                        </button>
+                    </div>
+
+                    <div class="card">
+                        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                            共 <strong style="color: var(--text-primary);">${taskConfigs.length}</strong> 个任务配置，
+                            其中 <strong style="color: var(--success);">${taskConfigs.filter(c => c.is_enabled).length}</strong> 个已启用
+                        </p>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>任务名称</th>
+                                    <th>类型</th>
+                                    <th>启用</th>
+                                    <th>触发器</th>
+                                    <th>上次运行</th>
+                                    <th>描述</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>${html}</tbody>
+                        </table>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载任务配置失败:', error);
+                document.getElementById('main-content').innerHTML = `
+                    <div class="card">
+                        <h3 style="color: var(--error);">加载失败</h3>
+                        <p>无法加载任务配置: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function toggleTask(taskName) {
+            try {
+                const response = await fetch(`${API_BASE}/task-configs/${taskName}/toggle`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    await loadTaskConfigs();
+                } else {
+                    alert('操作失败: ' + data.message);
+                }
+            } catch (error) {
+                console.error('切换任务状态失败:', error);
+                alert('操作失败: ' + error.message);
+            }
+        }
+
+        function showCreateTaskConfig() {
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-content').innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                    <h3 style="margin: 0; font-size: 18px;">新建任务配置</h3>
+                    <button onclick="closeModal()" style="background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+
+                <form id="create-task-form" onsubmit="createTaskConfig(event)">
+                    <div class="form-group">
+                        <label>任务名称 *</label>
+                        <input type="text" id="task-name" required placeholder="例如: update_stock_list">
+                    </div>
+
+                    <div class="form-group">
+                        <label>任务类型</label>
+                        <select id="task-type">
+                            <option value="daily_update">daily_update</option>
+                            <option value="data_fetch">data_fetch</option>
+                            <option value="recommendation">recommendation</option>
+                            <option value="health_check">health_check</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>启用状态</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="task-enabled" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label>执行间隔（秒）</label>
+                        <input type="number" id="task-interval" placeholder="例如: 3600 (1小时)" min="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cron 表达式（可选，优先级高于间隔）</label>
+                        <input type="text" id="task-cron" placeholder="例如: 0 2 * * * (每天凌晨2点)">
+                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">格式: 分 时 日 月 周</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>任务描述</label>
+                        <textarea id="task-description" placeholder="描述该任务的用途..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>额外配置 (JSON)</label>
+                        <textarea id="task-config-json" placeholder='{"min_price": 0, "max_price": 100}'></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                        <button type="button" onclick="closeModal()" class="btn btn-secondary">取消</button>
+                        <button type="submit" class="btn btn-primary">创建</button>
+                    </div>
+                </form>
+            `;
+        }
+
+        async function createTaskConfig(event) {
+            event.preventDefault();
+
+            const configData = {
+                task_name: document.getElementById('task-name').value,
+                task_type: document.getElementById('task-type').value,
+                is_enabled: document.getElementById('task-enabled').checked,
+                interval_seconds: document.getElementById('task-interval').value ? parseInt(document.getElementById('task-interval').value) : null,
+                cron_expression: document.getElementById('task-cron').value || null,
+                description: document.getElementById('task-description').value,
+                config_json: document.getElementById('task-config-json').value ? JSON.parse(document.getElementById('task-config-json').value) : null
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/task-configs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(configData)
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    closeModal();
+                    await loadTaskConfigs();
+                } else {
+                    alert('创建失败: ' + data.message);
+                }
+            } catch (error) {
+                console.error('创建任务配置失败:', error);
+                alert('创建失败: ' + error.message);
+            }
+        }
+
+        function showEditTaskConfig(taskName) {
+            const config = taskConfigs.find(c => c.task_name === taskName);
+            if (!config) return;
+
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-content').innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                    <h3 style="margin: 0; font-size: 18px;">编辑任务配置 - ${taskName}</h3>
+                    <button onclick="closeModal()" style="background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+
+                <form id="edit-task-form" onsubmit="updateTaskConfig(event, '${taskName}')">
+                    <div class="form-group">
+                        <label>任务名称</label>
+                        <input type="text" id="task-name" value="${config.task_name}" disabled style="opacity: 0.6;">
+                    </div>
+
+                    <div class="form-group">
+                        <label>任务类型</label>
+                        <select id="task-type">
+                            <option value="daily_update" ${config.task_type === 'daily_update' ? 'selected' : ''}>daily_update</option>
+                            <option value="data_fetch" ${config.task_type === 'data_fetch' ? 'selected' : ''}>data_fetch</option>
+                            <option value="recommendation" ${config.task_type === 'recommendation' ? 'selected' : ''}>recommendation</option>
+                            <option value="health_check" ${config.task_type === 'health_check' ? 'selected' : ''}>health_check</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>执行间隔（秒）</label>
+                        <input type="number" id="task-interval" value="${config.interval_seconds || ''}" placeholder="例如: 3600 (1小时)" min="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cron 表达式（可选，优先级高于间隔）</label>
+                        <input type="text" id="task-cron" value="${config.cron_expression || ''}" placeholder="例如: 0 2 * * * (每天凌晨2点)">
+                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">格式: 分 时 日 月 周</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>任务描述</label>
+                        <textarea id="task-description" placeholder="描述该任务的用途...">${config.description || ''}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>额外配置 (JSON)</label>
+                        <textarea id="task-config-json" placeholder='{"min_price": 0, "max_price": 100}'>${config.config_json ? JSON.stringify(config.config_json, null, 2) : ''}</textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                        <button type="button" onclick="closeModal()" class="btn btn-secondary">取消</</button>
+                        <button type="submit" class="btn btn-primary">更新</button>
+                    </div>
+                </form>
+            `;
+        }
+
+        async function updateTaskConfig(event, taskName) {
+            event.preventDefault();
+
+            const configData = {
+                task_type: document.getElementById('task-type').value,
+                interval_seconds: document.getElementById('task-interval').value ? parseInt(document.getElementById('task-interval').value) : null,
+                cron_expression: document.getElementById('task-cron').value || null,
+                description: document.getElementById('task-description').value,
+                config_json: document.getElementById('task-config-json').value ? JSON.parse(document.getElementById('task-config-json').value) : null
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/task-configs/${taskName}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(configData)
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    closeModal();
+                    await loadTaskConfigs();
+                } else {
+                    alert('更新失败: ' + data.message);
+                }
+            } catch (error) {
+                console.error('更新任务配置失败:', error);
+                alert('更新失败: ' + error.message);
+            }
+        }
+
+        async function deleteTaskConfig(taskName) {
+            if (!confirm(`确定要删除任务配置 "${taskName}" 吗？此操作不可恢复。`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/task-configs/${taskName}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    await loadTaskConfigs();
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            } catch (error) {
+                console.error('删除任务配置失败:', error);
+                alert('删除失败: ' + error.message);
+            }
+        }
+
+        async function triggerTask(taskName) {
+            try {
+                const response = await fetch(`${API_BASE}/task-configs/${taskName}/trigger`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    alert(`任务 "${taskName}" 已手动触发`);
+                } else {
+                    alert('触发失败: ' + data.message);
+                }
+            } catch (error) {
+                console.error('触发任务失败:', error);
+                alert('触发失败: ' + error.message);
+            }
+        }
+
+        // 初始加载
+        loadDashboard();
+
+        // 只在仪表盘页面自动刷新
+        setInterval(() => {
+            if (currentPage === 'dashboard') {
+                loadDashboard();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

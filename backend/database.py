@@ -135,6 +135,29 @@ class SystemHealth(Base):
     )
 
 
+class TaskConfig( Base):
+    """任务配置表"""
+    __tablename__ = "task_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    task_name = Column(String(100), unique=True, index=True, nullable=False, comment="任务名称")
+    task_type = Column(String(50), comment="任务类型 (daily_update/data_fetch/recommendation/health_check)")
+    is_enabled = Column(Boolean, default=True, comment="是否启用")
+    interval_seconds = Column(Integer, comment="执行间隔（秒）")
+    cron_expression = Column(String(100), comment="Cron表达式（可选）")
+    last_run_time = Column(DateTime, comment="上次执行时间")
+    next_run_time = Column(DateTime, comment="下次执行时间")
+    config_json = Column(Text, comment="JSON格式的额外配置")
+    description = Column(Text, comment="任务描述")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+
+    __table_args__ = (
+        Index('idx_task_config_name', 'task_name'),
+        {'mysql_charset': 'utf8mb4'} if DATABASE_URL.startswith('mysql') else {}
+    )
+
+
 class TaskLog(Base):
     """任务执行日志"""
     __tablename__ = "task_logs"

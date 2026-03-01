@@ -13,7 +13,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from database import get_db, init_db, Recommendation, StockPrediction, SystemHealth, TaskLog, Stock, StockPrice, StockNews
+from database import get_db, init_db, Recommendation, StockPrediction, SystemHealth, TaskLog, Stock, StockPrice, StockNews, TaskConfig
 from sqlalchemy import func
 
 # 日志配置
@@ -57,8 +57,14 @@ async def startup_event():
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """管理后台首页"""
-    host = request.headers.get('host', 'localhost:8000')
-    return f"""
+    try:
+        # 读取前端 HTML 文件
+        with open("../frontend/index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        # Fallback to inline HTML if file not found
+        host = request.headers.get('host', 'localhost:8000')
+        return f"""
 <!DOCTYPE html>
 <html>
 <head>
@@ -1094,18 +1100,20 @@ async def get_recommendation_history(days: int = 7, db: Session = Depends(get_db
 
 
 @app.post("/api/recommendations/generate")
-async def generate_recommendations(min_price: float = 0, max_price: float = 15):
-    """生成新的推荐（可设置价格范围）"""
+async def generate_recommendations(min_price: float = 0, max_price: float = 15, force: bool = False):
+    """生成新的推荐（可设置价格范围和强制执行）"""
     try:
         recs = recommender.generate_recommendations(
             top_n=10,
             min_price=min_price,
-            max_price=max_price
+            max_price=max_price,
+            force=force
         )
         return {
             "status": "success",
             "count": len(recs),
             "price_range": f"¥{min_price}-{max_price}",
+            "force": force,
             "message": f"成功生成 {len(recs)} 个推荐"
         }
     except Exception as e:
@@ -1156,24 +1164,41 @@ async def list_stocks(page: int = 1, page_size: int = 10, db: Session = Depends(
 
 
 @app.get("/api/news")
-async def list_news(limit: int = 50, db: Session = Depends(get_db)):
-    """获取新闻列表"""
+async def list_news(limit: int = 50, page: int = 1, page_size: int = 20, stock_code: str = None,
+                    sentiment_label: str = None, db: Session = Depends(get_db)):
+    """获取新闻列表（支持分页和筛选）"""
     try:
-        news = db.query(StockNews).order_by(StockNews.pub_date.desc()).limit(limit).all()
-        
-        result = []
-        for n in news:
-            result.append({
-                "title": n.title,
-                "url": n.url,
-                "pub_date": n.pub_date.isoformat() if n.pub_date else None,
-                "sentiment": n.sentiment
-            })
-        
-        return {
-            "count": len(result),
-            "news": result
-        }
+        from models.news_collector import NewsCollector
+        collector = NewsCollector()
+
+        if page and page_size:
+            # 使用分页 API
+            result = collector.get_news_by_page(
+                page=page,
+                page_size=page_size,
+                stock_code=stock_code,
+                sentiment_label=sentiment_label,
+                db_session=db
+            )
+            return result
+        else:
+            # 兼容旧接口
+            news = db.query(StockNews).order_by(StockNews.pub_date.desc()).limit(limit).all()
+
+            result = []
+            for n in news:
+                result.append({
+                    "title": n.title,
+                    "content": n.content,
+                    "url": n.url,
+                    "pub_date": n.pub_date.isoformat() if n.pub_date else None,
+                    "sentiment": n.sentiment
+                })
+
+            return {
+                "count": len(result),
+                "news": result
+            }
     except Exception as e:
         logger.error(f"获取新闻失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1287,17 +1312,280 @@ async def system_status(db: Session = Depends(get_db)):
         latest_health = db.query(SystemHealth).order_by(
             SystemHealth.check_time.desc()
         ).first()
-        
+
         latest_rec = db.query(func.max(Recommendation.created_at)).scalar()
-        
+
+        # 检查交易日状态
+        is_trading_day = False
+        next_trading_day = None
+        try:
+            from utils.trading_day_checker import get_trading_day_checker
+            checker = get_trading_day_checker()
+            is_trading_day = checker.is_trading_day()
+            next_trading_day = checker.get_next_trading_day().isoformat()
+        except:
+            pass
+
         return {
             "status": "running",
+            "is_trading_day": is_trading_day,
+            "next_trading_day": next_trading_day,
             "last_health_check": latest_health.check_time.isoformat() if latest_health else None,
             "last_recommendation": latest_rec.isoformat() if latest_rec else None,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"获取系统状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trading-day")
+async def check_trading_day(date: str = None):
+    """检查是否为交易日"""
+    try:
+        from utils.trading_day_checker import get_trading_day_checker
+        from datetime import datetime as dt
+
+        checker = get_trading_day_checker()
+
+        check_date = dt.strptime(date, '%Y-%m-%d') if date else dt.now()
+
+        return {
+            "date": check_date.strftime('%Y-%m-%d'),
+            "is_trading_day": checker.is_trading_day(check_date),
+            "weekday": check_date.strftime('%A'),
+            "next_trading_day": checker.get_next_trading_day(check_date).strftime('%Y-%m-%d'),
+            "previous_trading_day": checker.get_previous_trading_day(check_date).strftime('%Y-%m-%d')
+        }
+    except Exception as e:
+        logger.error(f"检查交易日失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 任务配置 API ====================
+
+@app.get("/api/task-configs")
+async def get_all_task_configs(db: Session = Depends(get_db)):
+    """获取所有任务配置"""
+    try:
+        configs = db.query(TaskConfig).order_by(TaskConfig.task_name).all()
+
+        result = []
+        for config in configs:
+            result.append({
+                "id": config.id,
+                "task_name": config.task_name,
+                "task_type": config.task_type,
+                "is_enabled": config.is_enabled,
+                "interval_seconds": config.interval_seconds,
+                "cron_expression": config.cron_expression,
+                "last_run_time": config.last_run_time.isoformat() if config.last_run_time else None,
+                "next_run_time": config.next_run_time.isoformat() if config.next_run_time else None,
+                "config_json": json.loads(config.config_json) if config.config_json else None,
+                "description": config.description,
+                "created_at": config.created_at.isoformat() if config.created_at else None,
+                "updated_at": config.updated_at.isoformat() if config.updated_at else None
+            })
+
+        return {
+            "total": len(result),
+            "configs": result
+        }
+    except Exception as e:
+        logger.error(f"获取任务配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/task-configs/{task_name}")
+async def get_task_config(task_name: str, db: Session = Depends(get_db)):
+    """获取单个任务配置"""
+    try:
+        config = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+
+        if not config:
+            raise HTTPException(status_code=404, detail=f"任务配置 {task_name} 不存在")
+
+        return {
+            "id": config.id,
+            "task_name": config.task_name,
+            "task_type": config.task_type,
+            "is_enabled": config.is_enabled,
+            "interval_seconds": config.interval_seconds,
+            "cron_expression": config.cron_expression,
+            "last_run_time": config.last_run_time.isoformat() if config.last_run_time else None,
+            "next_run_time": config.next_run_time.isoformat() if config.next_run_time else None,
+            "config_json": json.loads(config.config_json) if config.config_json else None,
+            "description": config.description,
+            "created_at": config.created_at.isoformat() if config.created_at else None,
+            "updated_at": config.updated_at.isoformat() if config.updated_at else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/task-configs")
+async def create_task_config(config_data: dict, db: Session = Depends(get_db)):
+    """创建新任务配置"""
+    try:
+        task_name = config_data.get("task_name")
+        if not task_name:
+            raise HTTPException(status_code=400, detail="task_name 必填")
+
+        # 检查是否已存在
+        existing = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"任务配置 {task_name} 已存在")
+
+        # 创建新配置
+        new_config = TaskConfig(
+            task_name=task_name,
+            task_type=config_data.get("task_type", "data_update"),
+            is_enabled=config_data.get("is_enabled", True),
+            interval_seconds=config_data.get("interval_seconds"),
+            cron_expression=config_data.get("cron_expression"),
+            config_json=json.dumps(config_data.get("config_json", {})) if config_data.get("config_json") else None,
+            description=config_data.get("description", "")
+        )
+
+        db.add(new_config)
+        db.commit()
+        db.refresh(new_config)
+
+        return {
+            "status": "success",
+            "message": f"任务配置 {task_name} 创建成功",
+            "id": new_config.id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"创建任务配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/task-configs/{task_name}")
+async def update_task_config(task_name: str, config_data: dict, db: Session = Depends(get_db)):
+    """更新任务配置"""
+    try:
+        config = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+
+        if not config:
+            raise HTTPException(status_code=404, detail=f"任务配置 {task_name} 不存在")
+
+        # 更新字段
+        if "task_type" in config_data:
+            config.task_type = config_data["task_type"]
+        if "is_enabled" in config_data:
+            config.is_enabled = config_data["is_enabled"]
+        if "interval_seconds" in config_data:
+            config.interval_seconds = config_data["interval_seconds"]
+        if "cron_expression" in config_data:
+            config.cron_expression = config_data["cron_expression"]
+        if "config_json" in config_data:
+            config.config_json = json.dumps(config_data["config_json"]) if config_data["config_json"] else None
+        if "description" in config_data:
+            config.description = config_data["description"]
+
+        config.updated_at = datetime.now()
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": f"任务配置 {task_name} 更新成功"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"更新任务配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/task-configs/{task_name}")
+async def delete_task_config(task_name: str, db: Session = Depends(get_db)):
+    """删除任务配置"""
+    try:
+        config = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+
+        if not config:
+            raise HTTPException(status_code=404, detail=f"任务配置 {task_name} 不存在")
+
+        db.delete(config)
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": f"任务配置 {task_name} 删除成功"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"删除任务配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/task-configs/{task_name}/toggle")
+async def toggle_task_config(task_name: str, db: Session = Depends(get_db)):
+    """切换任务启用/禁用状态"""
+    try:
+        config = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+
+        if not config:
+            raise HTTPException(status_code=404, detail=f"任务配置 {task_name} 不存在")
+
+        config.is_enabled = not config.is_enabled
+        config.updated_at = datetime.now()
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": f"任务配置 {task_name} 已{'启用' if config.is_enabled else '禁用'}",
+            "is_enabled": config.is_enabled
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"切换任务状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/task-configs/{task_name}/trigger")
+async def trigger_task(task_name: str, db: Session = Depends(get_db)):
+    """手动触发任务执行"""
+    try:
+        # 导入调度器
+        import scheduler_db
+
+        # 检查任务是否存在
+        config = db.query(TaskConfig).filter(TaskConfig.task_name == task_name).first()
+        if not config:
+            raise HTTPException(status_code=404, detail=f"任务配置 {task_name} 不存在")
+
+        # 查找对应的任务函数
+        task_func = scheduler_db.scheduler_app.task_functions.get(task_name)
+        if not task_func:
+            raise HTTPException(status_code=400, detail=f"任务 {task_name} 没有对应的执行函数")
+
+        # 异步执行任务
+        import asyncio
+        asyncio.create_task(task_func())
+
+        return {
+            "status": "success",
+            "message": f"任务 {task_name} 已手动触发"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"触发任务失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
